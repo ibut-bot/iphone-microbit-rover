@@ -1,0 +1,17 @@
+.DS_Store
+.build/
+.build-tools/
+DerivedData/
+node_modules/
+pxt_modules/
+built/
+*.hex
+*.ipa
+*.app
+*.xcuserstate
+xcuserdata/
+*.mobileprovision
+*.p12
+*.p8
+.env
+.env.*

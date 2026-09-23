@@ -1,0 +1,25 @@
+{
+    "name": "microbit-rover",
+    "description": "M1/M3 rover with Bluetooth joystick and motor watchdog",
+    "dependencies": {
+        "core": "*",
+        "bluetooth": "*",
+        "SuperBitV2": "github:YahboomTechnology/SuperBitLibV2#2dc96afd11a4510601a9c4f55b94ae4b1a6ec229",
+        "microphone": "*"
+    },
+    "files": [
+        "main.ts"
+    ],
+    "preferredEditor": "tsprj",
+    "yotta": {
+        "config": {
+            "microbit-dal": {
+                "bluetooth": {
+                    "open": 1,
+                    "whitelist": 0,
+                    "security_level": null
+                }
+            }
+        }
+    }
+}
