@@ -3,7 +3,7 @@ import AVFoundation
 import Photos
 
 /// Writes camera frames and the joystick directly; no screen-recording service/export step.
-final class RoverRecording: ObservableObject {
+final class RoverRecording: NSObject, ObservableObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     @Published var recording = false
     @Published var busy = false
     @Published var status = ""
@@ -11,7 +11,17 @@ final class RoverRecording: ObservableObject {
     @Published var clips: [URL] = []
     @Published var showLibrary = false
     @Published var frameCount = 0
+    @Published var audioWarning = ""
     private let queue = DispatchQueue(label: "rover.video-writer", qos: .userInitiated)
+    private var audioInput: AVAssetWriterInput?
+    private let microphone = AVCaptureSession()
+    private var microphoneConfigured = false
+    private var startGeneration = 0
+    private var starting = false
+    private var audioFrames = 0
+    @Published private(set) var photosSaved: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "rover.photosSaved") ?? [])
+    private var photosInFlight = Set<String>()
+    func alreadyInPhotos(_ url: URL) -> Bool { photosSaved.contains(url.lastPathComponent) }
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -22,7 +32,7 @@ final class RoverRecording: ObservableObject {
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     private let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
-    init() { refreshClips() }
+    override init() { super.init(); refreshClips() }
     func refreshClips() {
         clips = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.creationDateKey])) ?? [])
             .filter { $0.pathExtension == "mp4" }
@@ -31,18 +41,78 @@ final class RoverRecording: ObservableObject {
     }
     func start() {
         guard !busy, !recording else { return }
-        frameCount = 0; status = "Recording · waiting for camera frames"; recording = true
-        // Configuration is deferred to the first frame, using its actual portrait aspect.
-        queue.async { self.writer = nil; self.input = nil; self.adaptor = nil; self.firstTime = nil; self.count = 0; self.outputURL = nil }
+        audioWarning = ""
+        busy = true; starting = true; startGeneration += 1
+        let token = startGeneration
+        status = "Preparing microphone…"
+        AVCaptureDevice.requestAccess(for: .audio) { [weak self] allowed in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.startGeneration == token else { self.starting = false; self.busy = false; return }
+                guard allowed else {
+                    self.starting = false; self.busy = false
+                    self.status = "Allow Microphone for Microbit Link in Settings to record sound."
+                    return
+                }
+                self.beginRecording(token: token, useMicrophone: true)
+            }
+        }
+    }
+    private func beginRecording(token: Int, useMicrophone: Bool) {
+        queue.async {
+            self.writer = nil; self.input = nil; self.audioInput = nil; self.adaptor = nil
+            self.firstTime = nil; self.count = 0; self.audioFrames = 0; self.outputURL = nil
+            do {
+                if useMicrophone {
+                    if !self.microphoneConfigured {
+                        guard let device = AVCaptureDevice.default(for: .audio) else { throw self.failure("No microphone available") }
+                        let source = try AVCaptureDeviceInput(device: device)
+                        let output = AVCaptureAudioDataOutput()
+                        output.setSampleBufferDelegate(self, queue: self.queue)
+                        guard self.microphone.canAddInput(source) else { throw self.failure("Microphone input unavailable") }
+                        self.microphone.addInput(source)
+                        guard self.microphone.canAddOutput(output) else { self.microphone.removeInput(source); throw self.failure("Microphone output unavailable") }
+                        self.microphone.addOutput(output); self.microphoneConfigured = true
+                    }
+                    self.microphone.startRunning()
+                    guard self.microphone.isRunning else { throw self.failure("Microphone could not start") }
+                }
+                DispatchQueue.main.async {
+                    guard self.startGeneration == token else {
+                        self.queue.async { self.microphone.stopRunning() }
+                        self.starting = false; self.busy = false; return
+                    }
+                    self.starting = false; self.busy = false; self.frameCount = 0
+                    self.recording = true; self.status = "Recording · waiting for frames and sound"
+                }
+            } catch {
+                DispatchQueue.main.async { self.starting = false; self.busy = false; self.status = "Recording failed: \(error.localizedDescription)" }
+            }
+        }
+    }
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        let clock = microphone.masterClock ?? CMClockGetHostTimeClock()
+        var timing = CMSampleTimingInfo()
+        guard CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &timing) == noErr else { return }
+        timing.presentationTimeStamp = CMSyncConvertTime(timing.presentationTimeStamp, from: clock, to: CMClockGetHostTimeClock())
+        timing.decodeTimeStamp = .invalid
+        var adjusted: CMSampleBuffer?
+        guard CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &adjusted) == noErr, let adjusted else { return }
+        appendAudio(adjusted)
+    }
+    private func appendAudio(_ sample: CMSampleBuffer) {
+        guard let firstTime, let writer, writer.status == .writing, let audioInput,
+              CMSampleBufferGetPresentationTimeStamp(sample).seconds >= firstTime, audioInput.isReadyForMoreMediaData else { return }
+        if audioInput.append(sample) { audioFrames += 1 }
     }
     func append(front: UIImage?, rear: UIImage?, decision: HandDecision, landmarks: [CGPoint]) {
         guard recording, !pendingFrame, let front = front?.cgImage, let rear = rear?.cgImage else { return }
         pendingFrame = true
-        let timestamp = ProcessInfo.processInfo.systemUptime
+        let timestamp = CMClockGetTime(CMClockGetHostTimeClock()).seconds
         queue.async {
             defer { DispatchQueue.main.async { self.pendingFrame = false } }
             do {
-                if self.writer == nil { try self.configure(front: front) }
+                if self.writer == nil { try self.configure(front: front, timestamp: timestamp) }
                 guard let writer = self.writer, let input = self.input, let adaptor = self.adaptor else { return }
                 guard writer.status == .writing else { throw writer.error ?? self.failure("Video writer stopped") }
                 guard input.isReadyForMoreMediaData else { return }
@@ -50,16 +120,17 @@ final class RoverRecording: ObservableObject {
                 var buffer: CVPixelBuffer?
                 guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer else { throw self.failure("Could not allocate video frame") }
                 try VideoComposite.draw(front: front, rear: rear, decision: decision, landmarks: landmarks, into: buffer)
-                if self.firstTime == nil { self.firstTime = timestamp }
-                let time = CMTime(seconds: timestamp - (self.firstTime ?? timestamp), preferredTimescale: 600)
+                let time = CMTime(seconds: timestamp, preferredTimescale: 1_000_000)
                 guard adaptor.append(buffer, withPresentationTime: time) else { throw writer.error ?? self.failure("Could not write video frame") }
                 self.count += 1
                 let frames = self.count
+                let sound = self.audioFrames > 0
                 DispatchQueue.main.async {
                     self.frameCount = frames
-                    if self.recording { self.status = "Recording · \(frames) frames written" }
+                    if self.recording { self.status = "Recording · \(frames) frames · \(sound ? "mic on" : "waiting for audio")" }
                 }
             } catch {
+                self.microphone.stopRunning()
                 self.writer?.cancelWriting()
                 if let url = self.outputURL { try? FileManager.default.removeItem(at: url) }
                 self.writer = nil
@@ -72,7 +143,7 @@ final class RoverRecording: ObservableObject {
         }
     }
     private func failure(_ text: String) -> NSError { NSError(domain: "RoverVideo", code: 1, userInfo: [NSLocalizedDescriptionKey: text]) }
-    private func configure(front: CGImage) throws {
+    private func configure(front: CGImage, timestamp: TimeInterval) throws {
         let width = 720
         let height = min(1920, max(2, Int((Double(front.height) / Double(front.width) * Double(width)) / 2) * 2))
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -83,23 +154,31 @@ final class RoverRecording: ObservableObject {
         input.expectsMediaDataInRealTime = true
         guard writer.canAdd(input) else { throw failure("Video format unsupported") }
         writer.add(input)
+        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96000])
+        audio.expectsMediaDataInRealTime = true
+        guard writer.canAdd(audio) else { throw failure("Audio encoding unsupported") }
+        writer.add(audio); audioInput = audio
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height, kCVPixelBufferCGImageCompatibilityKey as String: true, kCVPixelBufferCGBitmapContextCompatibilityKey as String: true])
         guard writer.startWriting() else { throw writer.error ?? failure("Could not start video file") }
-        writer.startSession(atSourceTime: .zero)
+        writer.startSession(atSourceTime: CMTime(seconds: timestamp, preferredTimescale: 1_000_000))
+        firstTime = timestamp
         self.writer = writer; self.input = input; self.adaptor = adaptor; outputURL = url
     }
     func stop() {
+        if starting { startGeneration += 1 }
         guard recording else { return }
         recording = false; busy = true; status = "Finishing video…"
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save rover video") { [weak self] in self?.endBackgroundTask() }
         queue.async {
+            self.microphone.stopRunning()
             guard let writer = self.writer, let input = self.input, let url = self.outputURL, self.count > 0 else {
                 self.writer?.cancelWriting()
                 if let url = self.outputURL { try? FileManager.default.removeItem(at: url) }
                 DispatchQueue.main.async { self.busy = false; self.status = "No camera frames recorded. Wait for both previews before recording."; self.endBackgroundTask() }
                 return
             }
-            input.markAsFinished()
+            input.markAsFinished(); self.audioInput?.markAsFinished()
+            let hasAudio = self.audioFrames > 0
             writer.finishWriting {
                 DispatchQueue.main.async {
                     guard writer.status == .completed else {
@@ -107,16 +186,23 @@ final class RoverRecording: ObservableObject {
                     }
                     self.savedURL = url; self.refreshClips()
                     self.saveToPhotos(url)
+                    if !hasAudio { self.audioWarning = "No microphone samples arrived in this clip. Check microphone access." }
                 }
             }
         }
     }
     func saveToPhotos(_ url: URL) {
+        guard !alreadyInPhotos(url), !photosInFlight.contains(url.lastPathComponent) else {
+            if alreadyInPhotos(url) { status = "Already saved to Photos" }
+            return
+        }
         guard FileManager.default.fileExists(atPath: url.path) else { status = "Video file is missing"; busy = false; return }
+        photosInFlight.insert(url.lastPathComponent)
         busy = true; status = "Video saved on iPhone · saving to Photos…"
         let save: (PHAuthorizationStatus) -> Void = { access in
             guard access == .authorized || access == .limited else {
                 DispatchQueue.main.async {
+                    self.photosInFlight.remove(url.lastPathComponent)
                     self.busy = false; self.status = "Saved in Files → Microbit Link. Photos access is off; use Share or allow Photos in Settings."
                     self.showLibrary = UIApplication.shared.applicationState == .active; self.endBackgroundTask()
                 }
@@ -126,9 +212,20 @@ final class RoverRecording: ObservableObject {
                 PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
             } completionHandler: { success, error in
                 DispatchQueue.main.async {
+                    self.photosInFlight.remove(url.lastPathComponent)
+                    if success {
+                        self.photosSaved.insert(url.lastPathComponent)
+                        UserDefaults.standard.set(Array(self.photosSaved), forKey: "rover.photosSaved")
+                    }
                     self.busy = false
                     self.status = success ? "Video saved to Photos and Files" : "Saved in Files; Photos error: \(error?.localizedDescription ?? "Unknown error")"
                     self.showLibrary = UIApplication.shared.applicationState == .active; self.endBackgroundTask()
+                    #if targetEnvironment(simulator)
+                    if success && ProcessInfo.processInfo.arguments.contains("--recording-smoke-test") {
+                        self.saveToPhotos(url)
+                        assert(self.status == "Already saved to Photos")
+                    }
+                    #endif
                 }
             }
         }
@@ -193,7 +290,10 @@ struct RecordingLibraryView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section { Text(recording.status.isEmpty ? "Videos stay on your iPhone." : recording.status) }
+                Section {
+                    Text(recording.status.isEmpty ? "Videos stay on your iPhone." : recording.status)
+                    if !recording.audioWarning.isEmpty { Text(recording.audioWarning).foregroundStyle(.orange) }
+                }
                 if recording.clips.isEmpty { Text("No completed recordings yet") }
                 ForEach(recording.clips, id: \.self) { url in
                     VStack(alignment: .leading, spacing: 10) {
@@ -201,11 +301,11 @@ struct RecordingLibraryView: View {
                         HStack {
                             ShareLink(item: url) { Label("Share / Save", systemImage: "square.and.arrow.up") }
                             Spacer()
-                            Button("Save to Photos") { recording.saveToPhotos(url) }.disabled(recording.busy)
+                            Button(recording.alreadyInPhotos(url) ? "Saved to Photos ✓" : "Save to Photos") { recording.saveToPhotos(url) }.disabled(recording.busy || recording.alreadyInPhotos(url))
                         }.buttonStyle(.borderless)
                     }.padding(.vertical, 6)
                 }
-                Section { Text("Also in Files → On My iPhone → Microbit Link. Share lets you preview or export a video. Saving to Photos again creates another copy.") }
+                Section { Text("Also in Files → On My iPhone → Microbit Link. Share lets you preview or export a video. The Files copy is a local backup. The app prevents saving the same clip to Photos twice.") }
             }.navigationTitle("Recordings")
                 .toolbar { Button("Done") { dismiss() } }
                 .onAppear { recording.refreshClips() }
@@ -290,13 +390,31 @@ extension RoverRecording {
         }
         let front = fixture(.systemBlue, label: "FRONT TOP")
         let rear = fixture(.systemRed, label: "REAR TOP")
-        start()
+        startGeneration += 1; starting = true; busy = true
+        beginRecording(token: startGeneration, useMicrophone: false)
         var frames = 0
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             frames += 1
             self.append(front: front, rear: rear, decision: HandDecision(held: true, stickX: sin(Double(frames) / 5) * 0.8, stickY: 0.3, steering: 0.4, forward: 0.2, message: "Test"), landmarks: [])
+            let audioTime = CMClockGetTime(CMClockGetHostTimeClock())
+            self.queue.async { self.appendTestTone(at: audioTime) }
             if frames == 30 { timer.invalidate(); self.stop() }
         }
     }
+    private func appendTestTone(at time: CMTime) {
+        let count = 4800
+        let samples: [Int16] = (0..<count).map { Int16(sin(Double($0) * 2 * .pi * 440 / 48000) * 8000) }
+        var block: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: count * 2, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: count * 2, flags: 0, blockBufferOut: &block) == noErr, let block else { return }
+        _ = samples.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: count * 2) }
+        var asbd = AudioStreamBasicDescription(mSampleRate: 48000, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked, mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2, mChannelsPerFrame: 1, mBitsPerChannel: 16, mReserved: 0)
+        var format: CMAudioFormatDescription?
+        guard CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &format) == noErr, let format else { return }
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 48000), presentationTimeStamp: time, decodeTimeStamp: .invalid)
+        var buffer: CMSampleBuffer?
+        guard CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format, sampleCount: count, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &buffer) == noErr, let buffer else { return }
+        appendAudio(buffer)
+    }
+
 }
 #endif

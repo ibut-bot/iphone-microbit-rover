@@ -68,12 +68,12 @@ Hand mode supports forward, reverse and turns in place, and caps the speed setti
 ## Record both cameras
 
 1. Connect the rover before entering Hand control. Aim the rear camera at the rover and the front camera at your hand.
-2. Wait for both previews, then tap **Record**. The frame counter confirms video frames are being written; no screen-recording prompt is needed. Allow permission to add videos to Photos when saving. Microphone recording is off.
+2. Wait for both previews, then tap **Record**. The frame counter confirms video frames are being written; no screen-recording prompt is needed. Allow permission to add videos to Photos when saving. Allow Microphone access when starting a recording. The counter shows “mic on” once audio samples arrive.
 3. Recording starts with the rover disarmed; tap **Enable driving** when ready.
 4. Tap **Stop recording** to finish. The app saves a single composited MP4 to **Photos**, including both cameras and joystick highlighting. Camera frames and joystick state are composited directly using AVAssetWriter; menus and buttons are not recorded.
-5. A local copy is retained under **Files → On My iPhone → Microbit Link**. The **Recordings** list opens after saving and is available from the film-stack icon, including after relaunch. Use **Share / Save** or **Save to Photos** to recover/export a clip.
+5. A local copy is retained under **Files → On My iPhone → Microbit Link**. The **Recordings** list opens after saving and is available from the film-stack icon, including after relaunch. Use **Share / Save** or **Save to Photos** to recover/export a clip. After a successful automatic save, the Photos button becomes **Saved to Photos ✓**; saved state persists across launches and repeat taps cannot create another Photos copy. The Files backup remains available.
 
-Exit, opening the guide, camera interruption or backgrounding stops recording and attempts to finalize/save. No microphone audio is captured. Wait for the save confirmation before force-quitting. Recording needs supported simultaneous front/rear cameras ; if the rear camera cannot start, hand control remains available but Record is disabled. Dual streams are configured at 15 fps with low-resolution supported formats to leave capacity for tracking.
+Exit, opening the guide, camera interruption or backgrounding stops recording and attempts to finalize/save. Microphone sound is encoded as mono AAC alongside the video, using a shared clock for timing. Wait for the save confirmation before force-quitting. Recording needs supported simultaneous front/rear cameras ; if the rear camera cannot start, hand control remains available but Record is disabled. Dual streams are configured at 15 fps with low-resolution supported formats to leave capacity for tracking.
 
 ## Stop behaviour and limitations
 
@@ -136,4 +136,4 @@ This repository references MakeCode and Yahboom open-source packages; their lice
 
 ### Recording integration check (simulator)
 
-Launch the simulator app with `--recording-smoke-test` to generate a three-second clip through the real compositor and AVAssetWriter, using clearly labelled synthetic front/rear images. Grant simulator Photos add access to test automatic export. The flag is compiled out on physical devices. `swift Tests/verify-video.swift /path/to/generated.mp4 /path/to/frame.png` checks duration, dimensions and decoding and extracts a frame for inspection. This does not validate physical camera performance.
+Launch the simulator app with `--recording-smoke-test` to generate a three-second clip through the real compositor and AVAssetWriter, using clearly labelled synthetic front/rear images and a generated 440 Hz audio tone. The test also attempts a repeat Photos save to exercise duplicate protection. Grant simulator Photos add access to test automatic export. The flag is compiled out on physical devices. `swift Tests/verify-video.swift /path/to/generated.mp4 /path/to/frame.png` checks duration, dimensions, decoding and a non-silent synchronized audio track and extracts a frame for inspection. This does not validate physical camera performance.
