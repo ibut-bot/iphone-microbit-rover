@@ -13,7 +13,7 @@ enum GestureLesson: Int, CaseIterable, Identifiable {
     }
     var instruction: String {
         switch self {
-        case .forward: return "First show an open hand. Touch thumb and index finger together and hold briefly. Keep the pinch relaxed; the other fingers can rest naturally."
+        case .forward: return "First separate your thumb and index finger. Touch thumb and index finger together and hold briefly. Keep the pinch relaxed; the other fingers can rest naturally."
         case .left: return "Keep the pinch held and move your hand to the LEFT side of the camera preview. The left wheel stops and the right wheel drives the turn."
         case .right: return "Keep the pinch held and move your hand to the RIGHT side of the camera preview. The right wheel stops and the left wheel drives the turn."
         case .stop: return "Separate thumb and index finger to stop. If your hand leaves the frame, movement also stops. Tap STOP to disable driving completely."
@@ -172,7 +172,7 @@ struct GestureGuide: View {
                     Text(lesson.instruction).font(.body)
                     Divider()
                     Label("Phone upright on a stand, front camera facing you", systemImage: "iphone.gen3")
-                    Label("Use one hand in good light; keep your palm visible", systemImage: "hand.raised.fingers.spread")
+                    Label("Only thumb and index matter; keep their tips and index knuckle visible", systemImage: "hand.raised.fingers.spread")
                     Label("Preview is mirrored: screen-left steers left", systemImage: "arrow.left.arrow.right")
                     Text("Tap Enable driving again after closing this guide. Hand mode moves forward only, capped at 35% power; use Joystick for reversing.")
                         .font(.footnote).foregroundStyle(.secondary)

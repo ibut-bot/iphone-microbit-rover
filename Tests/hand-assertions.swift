@@ -2,7 +2,7 @@ var gate = HandDriveGate()
 var time = 10.0
 func sample(_ ratio: Double, x: Double = 0.5, age: Double = 0, enabled: Bool = true) -> HandDecision {
     time += 0.1
-    return gate.evaluate(HandSample(palmX: x, pinchRatio: ratio, capturedAt: time - age), now: time, enabled: enabled)
+    return gate.evaluate(HandSample(pinchX: x, pinchRatio: ratio, capturedAt: time - age), now: time, enabled: enabled)
 }
 func drive() {
     assert(!sample(1.1).moving)

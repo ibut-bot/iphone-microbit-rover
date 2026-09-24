@@ -2,8 +2,8 @@ import Foundation
 
 /// Coordinates refer to the same upright, mirrored image shown in the preview.
 struct HandSample {
-    let palmX: Double
-    let pinchRatio: Double // Tip distance divided by palm size.
+    let pinchX: Double
+    let pinchRatio: Double // Tip distance divided by estimated index-finger length.
     let capturedAt: TimeInterval
 }
 
@@ -31,7 +31,7 @@ struct HandDriveGate {
     mutating func evaluate(_ sample: HandSample?, now: TimeInterval, enabled: Bool) -> HandDecision {
         guard enabled else {
             reset()
-            return HandDecision(message: "Enable driving · then open your hand")
+            return HandDecision(message: "Enable driving · separate thumb and index")
         }
         guard let sample else {
             // Stop immediately, but don't require another open-hand ritual for one dropped frame.
@@ -40,8 +40,8 @@ struct HandDriveGate {
             if let last = lastSampleAt, now - last > 0.6 { reset() }
             return HandDecision(message: "Hand not clear — stopped")
         }
-        guard sample.palmX.isFinite, sample.pinchRatio.isFinite,
-              sample.palmX >= 0, sample.palmX <= 1, sample.pinchRatio >= 0,
+        guard sample.pinchX.isFinite, sample.pinchRatio.isFinite,
+              sample.pinchX >= 0, sample.pinchX <= 1, sample.pinchRatio >= 0,
               now >= sample.capturedAt, now - sample.capturedAt <= Self.maxFrameAge else {
             reset()
             return HandDecision(message: "Tracking delayed — stopped")
@@ -66,10 +66,10 @@ struct HandDriveGate {
         guard pinching else { return HandDecision(message: "Hold pinch briefly…") }
 
         // Broad zones with hysteresis: small landmark jitter cannot flip a turn on/off.
-        if sample.palmX < Self.leftBoundary { direction = -1 }
-        else if sample.palmX > Self.rightBoundary { direction = 1 }
-        else if direction == -1 && sample.palmX >= 0.46 { direction = 0 }
-        else if direction == 1 && sample.palmX <= 0.54 { direction = 0 }
+        if sample.pinchX < Self.leftBoundary { direction = -1 }
+        else if sample.pinchX > Self.rightBoundary { direction = 1 }
+        else if direction == -1 && sample.pinchX >= 0.46 { direction = 0 }
+        else if direction == 1 && sample.pinchX <= 0.54 { direction = 0 }
         if direction == 0 { return HandDecision(forward: 0.85, message: "FORWARD · open pinch to stop") }
         // Equal forward/turn values stop the inside wheel, instead of relying on tiny
         // PWM differences that small geared motors may not reproduce under load.

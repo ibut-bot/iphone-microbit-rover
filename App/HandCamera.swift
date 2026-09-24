@@ -75,7 +75,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 DispatchQueue.main.async {
                     guard self.generation == token, self.requested else { return }
                     self.running = self.session.isRunning
-                    self.message = self.running ? "Show one hand, palm facing the camera" : "Camera unavailable — try again"
+                    self.message = self.running ? "Show your thumb and index finger" : "Camera unavailable — try again"
                     if !self.running { self.requested = false; self.onSample?(nil) }
                 }
             } catch {
@@ -134,33 +134,35 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         let cgImage = context.createCGImage(frame, from: frame.extent)
         var sample: HandSample?
         var dots: [CGPoint] = []
-        var status = "Show one hand, palm facing the camera"
+        var status = "Show your thumb and index finger"
         do {
             try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up).perform([request])
             let hands = request.results ?? []
             if hands.count > 1 { status = "Use only one hand — stopped" }
             if hands.count == 1, let hand = hands.first {
                 let points = try hand.recognizedPoints(.all)
-                dots = points.values.filter { $0.confidence >= 0.6 }.map { CGPoint(x: $0.location.x, y: 1 - $0.location.y) }
+                let relevant: [VNHumanHandPoseObservation.JointName] = [.thumbCMC, .thumbMP, .thumbIP, .thumbTip, .indexMCP, .indexPIP, .indexDIP, .indexTip]
+                dots = relevant.compactMap { points[$0] }.filter { $0.confidence >= 0.45 }.map { CGPoint(x: $0.location.x, y: 1 - $0.location.y) }
                 func point(_ key: VNHumanHandPoseObservation.JointName) -> CGPoint? {
                     guard let p = points[key], p.confidence >= 0.45 else { return nil }
                     return p.location
                 }
-                if let wrist = point(.wrist), let thumb = point(.thumbTip), let index = point(.indexTip),
-                   let middleBase = point(.middleMCP) {
+                if let thumb = point(.thumbTip), let index = point(.indexTip),
+                   let indexBase = point(.indexMCP), let indexKnuckle = point(.indexPIP) {
                     // Distances use pixels, not distorted normalized coordinates on a portrait frame.
                     func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
                         hypot((a.x - b.x) * frame.extent.width, (a.y - b.y) * frame.extent.height)
                     }
-                    // Wrist-to-middle-base stays measurable when a pinch hides the outer fingers.
-                    let palmSize = distance(wrist, middleBase)
-                    if palmSize > frame.extent.height * 0.045 {
-                        sample = HandSample(palmX: (wrist.x + middleBase.x) / 2,
-                                            pinchRatio: distance(thumb, index) / palmSize,
+                    // Use only the index finger's proximal segment to estimate scale.
+                    // Unlike base-to-tip distance, this does not collapse when the index curls.
+                    let fingerSize = distance(indexBase, indexKnuckle) * 2.2
+                    if fingerSize > frame.extent.height * 0.045 {
+                        sample = HandSample(pinchX: (thumb.x + index.x) / 2,
+                                            pinchRatio: distance(thumb, index) / fingerSize,
                                             capturedAt: timestamp)
-                        status = "Hand tracked · processing on your iPhone"
+                        status = "Thumb + index tracked"
                     } else { status = "Bring your hand closer — stopped" }
-                } else { status = "Show your whole hand in good light — stopped" }
+                } else { status = "Show thumb/index tips and index knuckle — stopped" }
             }
         } catch { status = "Hand tracking unavailable — stopped" }
         DispatchQueue.main.async { [weak self] in
