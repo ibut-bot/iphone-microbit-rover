@@ -3,30 +3,34 @@ import Foundation
 /// Coordinates refer to the same upright, mirrored image shown in the preview.
 struct HandSample {
     let pinchX: Double
+    let pinchY: Double // Vision coordinates: up is positive.
+    let imageAspect: Double // Width / height, for equal horizontal and vertical travel.
     let pinchRatio: Double // Tip distance divided by estimated index-finger length.
     let capturedAt: TimeInterval
 }
 
 struct HandDecision {
+    var held = false
+    var stickX = 0.0
+    var stickY = 0.0
     var steering = 0.0
     var forward = 0.0
     var message: String
-    var moving: Bool { forward > 0 }
+    var moving: Bool { hypot(steering, forward) > 0 }
 }
 
 struct HandDriveGate {
     static let maxFrameAge: TimeInterval = 0.30
-    static let leftBoundary = 0.40
-    static let rightBoundary = 0.60
+    static let radius = 0.30 // Fraction of image width.
+    static let deadzone = 0.28
     private var sawOpenHand = false
     private var pinchStarted: TimeInterval?
     private var pinching = false
     private var lastSampleAt: TimeInterval?
-    private var direction = 0
 
     mutating func reset() {
         sawOpenHand = false; pinchStarted = nil; pinching = false
-        lastSampleAt = nil; direction = 0
+        lastSampleAt = nil
     }
     mutating func evaluate(_ sample: HandSample?, now: TimeInterval, enabled: Bool) -> HandDecision {
         guard enabled else {
@@ -36,11 +40,12 @@ struct HandDriveGate {
         guard let sample else {
             // Stop immediately, but don't require another open-hand ritual for one dropped frame.
             // Reacquisition still needs a new pinch dwell; a sustained loss fully resets the gate.
-            pinching = false; pinchStarted = nil; direction = 0
+            pinching = false; pinchStarted = nil
             if let last = lastSampleAt, now - last > 0.6 { reset() }
             return HandDecision(message: "Hand not clear — stopped")
         }
-        guard sample.pinchX.isFinite, sample.pinchRatio.isFinite,
+        guard sample.pinchX.isFinite, sample.pinchY.isFinite, sample.imageAspect.isFinite, sample.pinchRatio.isFinite,
+              sample.pinchY >= 0, sample.pinchY <= 1, sample.imageAspect > 0,
               sample.pinchX >= 0, sample.pinchX <= 1, sample.pinchRatio >= 0,
               now >= sample.capturedAt, now - sample.capturedAt <= Self.maxFrameAge else {
             reset()
@@ -48,32 +53,37 @@ struct HandDriveGate {
         }
         if let last = lastSampleAt {
             if sample.capturedAt <= last || sample.capturedAt - last > 0.6 { reset() }
-            else if sample.capturedAt - last > Self.maxFrameAge { pinching = false; pinchStarted = nil; direction = 0 }
+            else if sample.capturedAt - last > Self.maxFrameAge { pinching = false; pinchStarted = nil }
         }
         lastSampleAt = sample.capturedAt
         if sample.pinchRatio >= 0.85 {
-            sawOpenHand = true; pinchStarted = nil; pinching = false; direction = 0
-            return HandDecision(message: "Ready · pinch to drive")
+            sawOpenHand = true; pinchStarted = nil; pinching = false
+            return HandDecision(message: "Pinch the centre to grab the joystick")
         }
         guard sawOpenHand else { return HandDecision(message: "Open thumb and index finger first") }
+        let x = (sample.pinchX - 0.5) / Self.radius
+        let y = (sample.pinchY - 0.5) / sample.imageAspect / Self.radius
+        let magnitude = hypot(x, y)
+        if !pinching && magnitude > Self.deadzone {
+            pinchStarted = nil
+            return HandDecision(message: "Bring the pinch into the centre circle")
+        }
         if sample.pinchRatio <= 0.42 {
             if pinchStarted == nil { pinchStarted = sample.capturedAt }
             if sample.capturedAt - (pinchStarted ?? sample.capturedAt) >= 0.15 { pinching = true }
         } else if sample.pinchRatio > 0.70 {
-            pinching = false; pinchStarted = nil; direction = 0
+            pinching = false; pinchStarted = nil
             return HandDecision(message: "Pinch released — stopped")
         } else if !pinching { pinchStarted = nil }
         guard pinching else { return HandDecision(message: "Hold pinch briefly…") }
 
-        // Broad zones with hysteresis: small landmark jitter cannot flip a turn on/off.
-        if sample.pinchX < Self.leftBoundary { direction = -1 }
-        else if sample.pinchX > Self.rightBoundary { direction = 1 }
-        else if direction == -1 && sample.pinchX >= 0.46 { direction = 0 }
-        else if direction == 1 && sample.pinchX <= 0.54 { direction = 0 }
-        if direction == 0 { return HandDecision(forward: 0.85, message: "FORWARD · open pinch to stop") }
-        // Equal forward/turn values stop the inside wheel, instead of relying on tiny
-        // PWM differences that small geared motors may not reproduce under load.
-        return HandDecision(steering: Double(direction) * 0.45, forward: 0.45,
-                            message: direction < 0 ? "LEFT · open pinch to stop" : "RIGHT · open pinch to stop")
+        let divisor = max(1, magnitude)
+        let power = magnitude <= Self.deadzone ? 0 : min(1, (magnitude - Self.deadzone) / (1 - Self.deadzone)) * 0.85
+        let steering = magnitude > 0 ? x / magnitude * power : 0
+        let forward = magnitude > 0 ? y / magnitude * power : 0
+        let direction = power == 0 ? "CENTRED · stopped" : abs(y) >= abs(x) ? (y > 0 ? "FORWARD" : "REVERSE") : (x < 0 ? "LEFT" : "RIGHT")
+        return HandDecision(held: true, stickX: x / divisor, stickY: y / divisor,
+                            steering: steering, forward: forward,
+                            message: direction + " · release pinch to stop")
     }
 }

@@ -3,19 +3,20 @@ import SceneKit
 import simd
 
 enum GestureLesson: Int, CaseIterable, Identifiable {
-    case forward, left, right, stop
+    case forward, reverse, left, right, stop
     var id: Int { rawValue }
     var title: String {
-        switch self { case .forward: return "Pinch to move"; case .left: return "Steer left"; case .right: return "Steer right"; case .stop: return "Open to stop" }
+        switch self { case .forward: return "Move forward"; case .reverse: return "Reverse"; case .left: return "Steer left"; case .right: return "Steer right"; case .stop: return "Open to stop" }
     }
     var symbol: String {
-        switch self { case .forward: return "arrow.up"; case .left: return "arrow.turn.up.left"; case .right: return "arrow.turn.up.right"; case .stop: return "stop.fill" }
+        switch self { case .forward: return "arrow.up"; case .reverse: return "arrow.down"; case .left: return "arrow.turn.up.left"; case .right: return "arrow.turn.up.right"; case .stop: return "stop.fill" }
     }
     var instruction: String {
         switch self {
-        case .forward: return "First separate your thumb and index finger. Touch thumb and index finger together and hold briefly. Keep the pinch relaxed; the other fingers can rest naturally."
-        case .left: return "Keep the pinch held and move your hand to the LEFT side of the camera preview. The left wheel stops and the right wheel drives the turn."
-        case .right: return "Keep the pinch held and move your hand to the RIGHT side of the camera preview. The right wheel stops and the left wheel drives the turn."
+        case .forward: return "Separate thumb and index, then pinch inside the joystick’s centre circle to grab it. Move the held pinch UP to drive forward. Returning to centre stops movement."
+        case .left: return "Grab the centre, then move the held pinch LEFT to turn left. Diagonal movement combines steering with forward or reverse."
+        case .right: return "Grab the centre, then move the held pinch RIGHT to turn right. Move farther from centre for more power."
+        case .reverse: return "Grab the joystick in the centre, then move your held pinch DOWN to reverse. Return to centre or release to stop."
         case .stop: return "Separate thumb and index finger to stop. If your hand leaves the frame, movement also stops. Tap STOP to disable driving completely."
         }
     }
@@ -72,7 +73,7 @@ final class DemoHand {
         root.addChildNode(glow)
         pose(pinch: 0, horizontal: 0)
     }
-    func pose(pinch: Float, horizontal: Float) {
+    func pose(pinch: Float, horizontal: Float, vertical: Float = 0) {
         let open: [[SIMD3<Float>]] = [
             [SIMD3(-0.60,0.35,0),SIMD3(-0.91,0.65,0),SIMD3(-1.11,0.91,0.02),SIMD3(-1.18,1.17,0.02)],
             [SIMD3(-0.46,0.96,0),SIMD3(-0.49,1.40,0),SIMD3(-0.52,1.76,0),SIMD3(-0.54,2.03,0)],
@@ -95,12 +96,13 @@ final class DemoHand {
             }
         }
         root.position.x = horizontal
+        root.position.y = vertical
         glow.position = SCNVector3(-0.44, 1.42, 0.57); glow.opacity = CGFloat(max(0, (pinch - 0.75) * 4))
     }
     func animate(_ lesson: GestureLesson, reduceMotion: Bool) {
         root.removeAllActions()
         if reduceMotion {
-            pose(pinch: lesson == .stop ? 0 : 1, horizontal: lesson == .left ? -0.55 : lesson == .right ? 0.55 : 0)
+            pose(pinch: lesson == .stop ? 0 : 1, horizontal: lesson == .left ? -0.55 : lesson == .right ? 0.55 : 0, vertical: lesson == .forward ? 0.45 : lesson == .reverse ? -0.45 : 0)
             return
         }
         let action = SCNAction.customAction(duration: 4.5) { [weak self] _, elapsed in
@@ -109,7 +111,7 @@ final class DemoHand {
             let pinch = lesson == .stop ? 1 - smooth((t - 0.18) / 0.32) : smooth((t - 0.08) / 0.25)
             let shift = smooth((t - 0.38) / 0.28) * (1 - smooth((t - 0.82) / 0.18))
             let horizontal: Float = lesson == .left ? -0.70 * shift : lesson == .right ? 0.70 * shift : 0
-            self?.pose(pinch: pinch, horizontal: horizontal)
+            self?.pose(pinch: pinch, horizontal: horizontal, vertical: lesson == .forward ? 0.45 * shift : lesson == .reverse ? -0.45 * shift : 0)
         }
         root.runAction(.repeatForever(action))
     }
@@ -174,7 +176,7 @@ struct GestureGuide: View {
                     Label("Phone upright on a stand, front camera facing you", systemImage: "iphone.gen3")
                     Label("Only thumb and index matter; keep their tips and index knuckle visible", systemImage: "hand.raised.fingers.spread")
                     Label("Preview is mirrored: screen-left steers left", systemImage: "arrow.left.arrow.right")
-                    Text("Tap Enable driving again after closing this guide. Hand mode moves forward only, capped at 35% power; use Joystick for reversing.")
+                    Text("Tap Enable driving again after closing this guide. Hand mode supports forward, reverse and turning, capped at 35% power. The dashed centre circle is the stopped zone.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(20)
             }

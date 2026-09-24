@@ -158,6 +158,8 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     let fingerSize = distance(indexBase, indexKnuckle) * 2.2
                     if fingerSize > frame.extent.height * 0.045 {
                         sample = HandSample(pinchX: (thumb.x + index.x) / 2,
+                                            pinchY: (thumb.y + index.y) / 2,
+                                            imageAspect: frame.extent.width / frame.extent.height,
                                             pinchRatio: distance(thumb, index) / fingerSize,
                                             capturedAt: timestamp)
                         status = "Thumb + index tracked"
@@ -191,12 +193,9 @@ struct HandCameraView: View {
                         let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
                         ZStack {
                             Image(uiImage: image).resizable().frame(width: size.width, height: size.height)
-                            Path { path in
-                                for fraction in [HandDriveGate.leftBoundary, HandDriveGate.rightBoundary] {
-                                    path.move(to: CGPoint(x: size.width * fraction, y: 0))
-                                    path.addLine(to: CGPoint(x: size.width * fraction, y: size.height))
-                                }
-                            }.stroke(.white.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                            CameraJoystick(decision: decision)
+                                .frame(width: size.width * HandDriveGate.radius * 2,
+                                       height: size.width * HandDriveGate.radius * 2)
                             ForEach(Array(camera.landmarks.enumerated()), id: \.offset) { _, point in
                                 Circle().fill(decision.moving ? Color.mint : Color.yellow)
                                     .frame(width: 5, height: 5).position(x: point.x * size.width, y: point.y * size.height)
@@ -213,11 +212,8 @@ struct HandCameraView: View {
                     }.foregroundStyle(.white).padding()
                 }
                 VStack(spacing: 8) {
-                    HStack {
-                        Text("← LEFT").frame(maxWidth: .infinity)
-                        Text("FORWARD").frame(maxWidth: .infinity)
-                        Text("RIGHT →").frame(maxWidth: .infinity)
-                    }.font(.caption.bold()).padding(10).background(.black.opacity(0.55), in: Capsule())
+                    Text(decision.held ? "JOYSTICK ACTIVE · RELEASE TO STOP" : "PINCH CENTRE TO GRAB")
+                        .font(.caption.bold()).padding(10).background(.black.opacity(0.55), in: Capsule())
                     Spacer()
                     Text(decision.message).font(.headline).multilineTextAlignment(.center)
                     Text(camera.message).font(.caption).multilineTextAlignment(.center)
@@ -228,5 +224,33 @@ struct HandCameraView: View {
                     }.allowsHitTesting(false)
             }.frame(height: height).clipShape(RoundedRectangle(cornerRadius: 22))
         }
+    }
+}
+
+/// Shares its radius, deadzone and mirrored coordinates with the actual drive gate.
+struct CameraJoystick: View {
+    let decision: HandDecision
+    var body: some View {
+        GeometryReader { geo in
+            let radius = geo.size.width / 2
+            ZStack {
+                Circle().fill(decision.held ? Color.mint.opacity(0.18) : Color.white.opacity(0.10))
+                Circle().stroke(decision.held ? Color.mint : Color.white.opacity(0.65), lineWidth: decision.held ? 3 : 2)
+                    .shadow(color: decision.held ? .mint.opacity(0.7) : .clear, radius: 10)
+                Rectangle().fill(.white.opacity(0.22)).frame(width: 1)
+                Rectangle().fill(.white.opacity(0.22)).frame(height: 1)
+                Circle().stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .frame(width: geo.size.width * HandDriveGate.deadzone, height: geo.size.width * HandDriveGate.deadzone)
+                Image(systemName: "arrow.up").offset(y: -radius + 18)
+                Image(systemName: "arrow.down").offset(y: radius - 18)
+                Image(systemName: "arrow.left").offset(x: -radius + 18)
+                Image(systemName: "arrow.right").offset(x: radius - 18)
+                Circle().fill(decision.held ? Color.mint.opacity(0.65) : Color.white.opacity(0.3))
+                    .overlay(Circle().stroke(.white.opacity(0.9), lineWidth: 2))
+                    .frame(width: 42, height: 42)
+                    .offset(x: decision.stickX * radius, y: -decision.stickY * radius)
+            }.foregroundStyle(.white).font(.headline)
+        }.allowsHitTesting(false)
+            .accessibilityLabel(decision.held ? "Joystick grabbed" : "Pinch inside centre circle to grab joystick")
     }
 }

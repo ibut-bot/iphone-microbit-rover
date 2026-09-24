@@ -56,14 +56,14 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 
 1. Put the phone upright on a stand with its **front camera facing you**; it does not need to ride on the rover.
 2. Connect the micro:bit, select **Hand control**, and allow camera access.
-3. Tap **Enable driving**, separate thumb and index finger, then pinch thumb and index finger together for about 0.15 seconds. Only thumb and index landmarks are used. Your wrist and other fingers are ignored; steer with the midpoint between the two fingertips.
-4. Hold the pinch in the centre to move forward. Move the pinched hand into the broad left/right zone of the mirrored preview to turn that way. Small movements around the zone boundaries do not make steering flicker. Turns stop the inside wheel and drive the outside wheel.
-5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. Brief tracking loss stops immediately and requires a fresh pinch hold to resume; after loss longer than 0.6 seconds, show an open hand again.
-6. Tap the **hand icon** at the top right for four animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
+3. Tap **Enable driving**, separate thumb and index finger, then pinch thumb and index finger together inside the joystick’s dashed centre circle for about 0.15 seconds to grab it. Only thumb and index landmarks are used. Your wrist and other fingers are ignored; steer with the midpoint between the two fingertips.
+4. The translucent joystick turns green when grabbed, including while centred and stopped. Move the held pinch UP for forward, DOWN for reverse, LEFT/RIGHT to turn, or diagonally to combine movement and steering. Distance from centre sets power. Returning to the dashed centre zone stops movement.
+5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. Brief tracking loss stops immediately and requires returning to centre and a fresh pinch hold to resume; after loss longer than 0.6 seconds, show an open hand again.
+6. Tap the **hand icon** at the top right for five animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
 
 The camera occupies most of hand-control mode, with live direction feedback overlaid and Enable/STOP always visible.
 
-Hand mode is forward-only and caps the speed setting at 35%; Joystick retains reverse and turns in place. Camera processing stays on the phone; frames are neither recorded nor uploaded. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same image coordinates, radius and deadzone. Camera processing stays on the phone; frames are neither recorded nor uploaded. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
 
 ## Stop behaviour and limitations
 
