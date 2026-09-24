@@ -417,6 +417,10 @@ struct ContentView: View {
             .toolbar(handMode ? .hidden : .visible, for: .navigationBar)
             .statusBarHidden(handMode)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { link.emergencyStop(); recording.showLibrary = true } label: { Image(systemName: "film.stack") }
+                        .accessibilityLabel("Saved recordings")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { link.emergencyStop(); camera.stop(); guide = true } label: {
                         Image(systemName: "hand.raised.fingers.spread.fill")
@@ -428,7 +432,12 @@ struct ContentView: View {
                 UIApplication.shared.isIdleTimerDisabled = scenePhase == .active
                 configure()
                 camera.onSample = { [weak link] sample in link?.receiveHandSample(sample) }
+                camera.onFrame = { [weak camera, weak link, weak recording] in
+                    guard let camera, let link, let recording else { return }
+                    recording.append(front: camera.image, rear: camera.rearImage, decision: link.handDecision, landmarks: camera.landmarks)
+                }
                 #if targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--recording-smoke-test") { recording.runSimulatorSmokeTest() }
                 if ProcessInfo.processInfo.arguments.contains("--gesture-guide") { guide = true }
                 if ProcessInfo.processInfo.arguments.contains("--hand-mode") { handMode = true }
                 #endif
@@ -450,13 +459,7 @@ struct ContentView: View {
             .onChange(of: camera.running) { _, running in
                 if !running && recording.recording { link.emergencyStop(); recording.stop() }
             }
-            .sheet(isPresented: $recording.showRecovery) {
-                if let preview = recording.recoveryPreview {
-                    NavigationStack { RecordingRecoveryView(controller: preview)
-                        .toolbar { Button("Done") { recording.showRecovery = false } }
-                    }
-                }
-            }
+            .sheet(isPresented: $recording.showLibrary) { RecordingLibraryView(recording: recording) }
             .sheet(isPresented: $settings, onDismiss: { updateCamera() }) {
                 NavigationStack {
                     Form {

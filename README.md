@@ -68,12 +68,12 @@ Hand mode supports forward, reverse and turns in place, and caps the speed setti
 ## Record both cameras
 
 1. Connect the rover before entering Hand control. Aim the rear camera at the rover and the front camera at your hand.
-2. Wait for both previews, then tap **Record**. Allow the iOS screen-recording prompt and permission to add videos to Photos. Microphone recording is off.
+2. Wait for both previews, then tap **Record**. The frame counter confirms video frames are being written; no screen-recording prompt is needed. Allow permission to add videos to Photos when saving. Microphone recording is off.
 3. Recording starts with the rover disarmed; tap **Enable driving** when ready.
-4. Tap **Stop recording** to finish. The app saves a single composited MP4 to **Photos**, including both cameras, joystick highlighting and visible app controls. This is a screen recording, not two separate camera files.
-5. A local copy is retained under **Files → On My iPhone → Microbit Link**. If Photos permission is denied or saving fails, use **Share video** to export it.
+4. Tap **Stop recording** to finish. The app saves a single composited MP4 to **Photos**, including both cameras and joystick highlighting. Camera frames and joystick state are composited directly using AVAssetWriter; menus and buttons are not recorded.
+5. A local copy is retained under **Files → On My iPhone → Microbit Link**. The **Recordings** list opens after saving and is available from the film-stack icon, including after relaunch. Use **Share / Save** or **Save to Photos** to recover/export a clip.
 
-Exit, opening the guide, camera interruption or backgrounding stops recording and attempts to finalize/save. Wait for the save confirmation before force-quitting. Recording needs supported simultaneous front/rear cameras and ReplayKit availability; if the rear camera cannot start, hand control remains available but Record is disabled. Dual streams are configured at 15 fps with low-resolution supported formats to leave capacity for tracking.
+Exit, opening the guide, camera interruption or backgrounding stops recording and attempts to finalize/save. No microphone audio is captured. Wait for the save confirmation before force-quitting. Recording needs supported simultaneous front/rear cameras ; if the rear camera cannot start, hand control remains available but Record is disabled. Dual streams are configured at 15 fps with low-resolution supported formats to leave capacity for tracking.
 
 ## Stop behaviour and limitations
 
@@ -95,7 +95,7 @@ Exit, opening the guide, camera interruption or backgrounding stops recording an
 | `App/MicrobitLink.swift` | SwiftUI app, BLE transport, joystick and wheel mixing |
 | `App/HandCamera.swift` | Front-camera capture, mirrored preview and Vision landmarks |
 | `App/HandControl.swift` | Testable gesture recognition interlock and steering |
-| `App/RoverRecording.swift` | Immersive controls, rear-camera inset, ReplayKit capture, Photos/Files saving |
+| `App/RoverRecording.swift` | Immersive controls, rear-camera inset, direct camera-frame video composition, Photos/Files saving |
 | `App/GestureGuide.swift` | Procedural articulated 3D hand demonstrations |
 | `Firmware/main.ts` | MakeCode motor protocol, parsing and watchdog |
 | `Firmware/pxt.json` | Firmware configuration and pinned Yahboom dependency |
@@ -133,3 +133,7 @@ Physical buttons send `SAFE:BUTTON`; watchdog sends `SAFE:TIMEOUT`. Invalid comm
 ## Dependencies and reuse
 
 This repository references MakeCode and Yahboom open-source packages; their licences remain with their respective authors. Generated binaries and downloaded dependencies are not committed. No additional licence is granted for the original code in this repository yet; choose one before distributing it as an open-source kit or product. Public visibility alone is not an open-source licence.
+
+### Recording integration check (simulator)
+
+Launch the simulator app with `--recording-smoke-test` to generate a three-second clip through the real compositor and AVAssetWriter, using clearly labelled synthetic front/rear images. Grant simulator Photos add access to test automatic export. The flag is compiled out on physical devices. `swift Tests/verify-video.swift /path/to/generated.mp4 /path/to/frame.png` checks duration, dimensions and decoding and extracts a frame for inspection. This does not validate physical camera performance.

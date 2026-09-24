@@ -11,6 +11,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     @Published var message = "Front camera stays on this phone"
     @Published var running = false
     @Published var denied = false
+    var onFrame: (() -> Void)?
     var onSample: ((HandSample?) -> Void)?
 
     private let session: AVCaptureSession = AVCaptureMultiCamSession.isMultiCamSupported ? AVCaptureMultiCamSession() : AVCaptureSession()
@@ -260,6 +261,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             self.image = cgImage.map { UIImage(cgImage: $0) }
             self.landmarks = dots; self.message = status
             self.onSample?(sample)
+            self.onFrame?()
         }
     }
 }
