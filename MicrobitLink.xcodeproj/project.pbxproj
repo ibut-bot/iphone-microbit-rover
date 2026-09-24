@@ -158,7 +158,7 @@ A00000000000000000000008,
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
@@ -169,7 +169,7 @@ A00000000000000000000008,
                 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save your rover recordings, including both cameras and joystick, to Photos.";
                 INFOPLIST_KEY_UIFileSharingEnabled = YES;
                 INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -182,7 +182,7 @@ A00000000000000000000008,
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
@@ -193,7 +193,7 @@ A00000000000000000000008,
                 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save your rover recordings, including both cameras and joystick, to Photos.";
                 INFOPLIST_KEY_UIFileSharingEnabled = YES;
                 INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

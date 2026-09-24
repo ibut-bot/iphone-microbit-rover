@@ -22,7 +22,7 @@ struct HandDecision {
 
 struct HandDriveGate {
     static let maxFrameAge: TimeInterval = 0.30
-    static let radius = 0.30 // Fraction of image width.
+    static let radius = 0.24 // Fraction of image width.
     static let deadzone = 0.28
     private var sawOpenHand = false
     private var pinchStarted: TimeInterval?
@@ -89,12 +89,36 @@ struct HandDriveGate {
     }
 }
 
-/// Both Vision and the displayed image use this same centred crop.
+/// Vision sees the full sensor frame; landmarks are mapped into the displayed crop.
 enum CameraFraming {
+    static func project(_ point: CGPoint, source: CGSize, crop: CGRect) -> CGPoint {
+        CGPoint(x: (point.x * source.width - crop.minX) / crop.width,
+                y: (point.y * source.height - crop.minY) / crop.height)
+    }
     static func crop(source: CGSize, aspect: CGFloat) -> CGRect {
         guard source.width > 0, source.height > 0, aspect.isFinite, aspect > 0 else { return .zero }
         let width = min(source.width, source.height * aspect)
         let height = min(source.height, source.width / aspect)
         return CGRect(x: (source.width - width) / 2, y: (source.height - height) / 2, width: width, height: height)
+    }
+}
+
+/// Stabilizes the pinch scale without reusing an old fingertip position or drive command.
+struct FingerScaleTracker {
+    private var value: Double?
+    private var measuredAt = -Double.infinity
+    mutating func reset() { value = nil; measuredAt = -Double.infinity }
+    mutating func update(_ measurement: Double?, now: TimeInterval) -> Double? {
+        if now - measuredAt > 0.4 { value = nil }
+        if let measurement, measurement.isFinite, measurement > 0 {
+            if let previous = value {
+                // Reject sudden foreshortening/outliers briefly, not indefinitely.
+                if measurement >= previous * 0.65 && measurement <= previous * 1.5 {
+                    value = previous * 0.8 + measurement * 0.2
+                    measuredAt = now
+                }
+            } else { value = measurement; measuredAt = now }
+        }
+        return value
     }
 }

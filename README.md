@@ -63,7 +63,7 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 
 Hand control opens an immersive camera screen. Connection, speed and wheel settings are hidden; tap **Exit** to return to them. Enable/STOP, the hand guide and recording remain available as small overlays. The rear-camera inset at bottom right shows the rover while the front camera tracks your fingers.
 
-Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same image coordinates, radius and deadzone. Camera processing stays on the phone; nothing is uploaded. Frames are recorded locally only when you tap Record. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same displayed-image coordinates, radius and deadzone. Detection uses the full camera frame, then maps landmarks onto the preview; shorter stick travel keeps turns away from the edges. Index-finger scale is stabilized for up to 400 ms, but both fingertips must be detected live. Camera processing stays on the phone; nothing is uploaded. Frames are recorded locally only when you tap Record. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
 
 ## Record both cameras
 

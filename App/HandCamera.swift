@@ -31,6 +31,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     private var generation = 0 // Main queue only.
     private var requested = false // Main queue only.
     private var lastProcessed: TimeInterval = 0
+    private var fingerScale = FingerScaleTracker()
     private var observers: [NSObjectProtocol] = []
 
     override init() {
@@ -79,7 +80,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
             guard let self else { return }
             do {
                 if !self.configured { try self.configure() }
-                self.captureGeneration = token; self.lastProcessed = 0
+                self.captureGeneration = token; self.lastProcessed = 0; self.fingerScale.reset()
                 self.session.startRunning()
                 DispatchQueue.main.async {
                     guard self.generation == token, self.requested else { return }
@@ -209,35 +210,46 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         var dots: [CGPoint] = []
         var status = "Show your thumb and index finger"
         do {
-            try VNImageRequestHandler(ciImage: frame, orientation: .up).perform([request])
+            try VNImageRequestHandler(ciImage: source, orientation: .up).perform([request])
             let hands = request.results ?? []
+            if hands.count != 1 { fingerScale.reset() }
             if hands.count > 1 { status = "Use only one hand — stopped" }
             if hands.count == 1, let hand = hands.first {
                 let points = try hand.recognizedPoints(.all)
                 let relevant: [VNHumanHandPoseObservation.JointName] = [.thumbCMC, .thumbMP, .thumbIP, .thumbTip, .indexMCP, .indexPIP, .indexDIP, .indexTip]
-                dots = relevant.compactMap { points[$0] }.filter { $0.confidence >= 0.45 }.map { CGPoint(x: $0.location.x, y: 1 - $0.location.y) }
+                func displayed(_ point: CGPoint) -> CGPoint {
+                    CameraFraming.project(point, source: source.extent.size, crop: crop)
+                }
+                dots = relevant.compactMap { points[$0] }.filter { $0.confidence >= 0.45 }.map {
+                    let p = displayed($0.location)
+                    return CGPoint(x: p.x, y: 1 - p.y)
+                }.filter { $0.x >= 0 && $0.x <= 1 && $0.y >= 0 && $0.y <= 1 }
                 func point(_ key: VNHumanHandPoseObservation.JointName) -> CGPoint? {
                     guard let p = points[key], p.confidence >= 0.45 else { return nil }
                     return p.location
                 }
-                if let thumb = point(.thumbTip), let index = point(.indexTip),
-                   let indexBase = point(.indexMCP), let indexKnuckle = point(.indexPIP) {
+                if let thumb = point(.thumbTip), let index = point(.indexTip) {
                     // Distances use pixels, not distorted normalized coordinates on a portrait frame.
                     func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
-                        hypot((a.x - b.x) * frame.extent.width, (a.y - b.y) * frame.extent.height)
+                        hypot((a.x - b.x) * source.extent.width, (a.y - b.y) * source.extent.height)
                     }
-                    // Use only the index finger's proximal segment to estimate scale.
-                    // Unlike base-to-tip distance, this does not collapse when the index curls.
-                    let fingerSize = distance(indexBase, indexKnuckle) * 2.2
-                    if fingerSize > frame.extent.height * 0.045 {
-                        sample = HandSample(pinchX: (thumb.x + index.x) / 2,
-                                            pinchY: (thumb.y + index.y) / 2,
+                    // A briefly obscured/foreshortened knuckle must not make a held
+                    // pinch look open. Only scale is cached; fingertips must be live.
+                    var measuredScale: Double?
+                    if let base = point(.indexMCP), let knuckle = point(.indexPIP) {
+                        let measured = distance(base, knuckle) * 2.2
+                        if measured > source.extent.height * 0.045 { measuredScale = measured }
+                    }
+                    if let fingerSize = fingerScale.update(measuredScale, now: timestamp) {
+                        let midpoint = displayed(CGPoint(x: (thumb.x + index.x) / 2, y: (thumb.y + index.y) / 2))
+                        sample = HandSample(pinchX: midpoint.x,
+                                            pinchY: midpoint.y,
                                             imageAspect: frame.extent.width / frame.extent.height,
                                             pinchRatio: distance(thumb, index) / fingerSize,
                                             capturedAt: timestamp)
                         status = "Thumb + index tracked"
                     } else { status = "Bring your hand closer — stopped" }
-                } else { status = "Show thumb/index tips and index knuckle — stopped" }
+                } else { fingerScale.reset(); status = "Show both fingertips — stopped" }
             }
         } catch { status = "Hand tracking unavailable — stopped" }
         DispatchQueue.main.async { [weak self] in
