@@ -8,11 +8,17 @@
 
 /* Begin PBXBuildFile section */
 		000000000000000000000006 /* MicrobitLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000005 /* MicrobitLink.swift */; };
+		A00000000000000000000002 = {isa = PBXBuildFile; fileRef = A00000000000000000000001; };
+		A00000000000000000000004 = {isa = PBXBuildFile; fileRef = A00000000000000000000003; };
+		A00000000000000000000006 = {isa = PBXBuildFile; fileRef = A00000000000000000000005; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000005 /* MicrobitLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrobitLink.swift; sourceTree = "<group>"; };
 		000000000000000000000007 /* MicrobitLink.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = MicrobitLink.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandControl.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandCamera.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureGuide.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -38,6 +44,9 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000005 /* MicrobitLink.swift */,
+				A00000000000000000000005,
+				A00000000000000000000003,
+				A00000000000000000000001,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -112,6 +121,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000000000006 /* MicrobitLink.swift in Sources */,
+				A00000000000000000000006,
+				A00000000000000000000004,
+				A00000000000000000000002,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,13 +154,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				MARKETING_VERSION = 1.1;
+                INFOPLIST_KEY_NSCameraUsageDescription = "Recognize hand gestures on this iPhone to control your rover. No video is recorded or uploaded.";
+                INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -161,13 +175,15 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				MARKETING_VERSION = 1.1;
+                INFOPLIST_KEY_NSCameraUsageDescription = "Recognize hand gestures on this iPhone to control your rover. No video is recorded or uploaded.";
+                INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

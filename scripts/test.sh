@@ -13,3 +13,6 @@ end = source.index('struct ContentView: View {', start)
 Path('.build/tests/mix.swift').write_text('import Foundation\n' + source[start:end] + Path('Tests/mix-assertions.swift').read_text())
 PY
 swift .build/tests/mix.swift
+
+cat App/HandControl.swift Tests/hand-assertions.swift > .build/tests/hand.swift
+swift .build/tests/hand.swift

@@ -23,6 +23,25 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
     @Published var joystick = CGSize.zero
     @Published var motor1 = 0
     @Published var motor3 = 0
+    @Published var handDecision = HandDecision(message: "Open your hand to begin")
+    private var handMode = false
+    private var handGate = HandDriveGate()
+    private var lastHandFrameAt: TimeInterval = 0
+    func setHandMode(_ enabled: Bool) {
+        emergencyStop()
+        handMode = enabled
+        handGate.reset()
+        lastHandFrameAt = 0
+    }
+    func receiveHandSample(_ sample: HandSample?) {
+        guard handMode else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        lastHandFrameAt = sample?.capturedAt ?? now
+        handDecision = handGate.evaluate(sample, now: now, enabled: armed)
+        if handDecision.moving {
+            move(CGSize(width: handDecision.steering, height: -handDecision.forward))
+        } else if joystick != .zero { releaseJoystick() }
+    }
     var speedLimit = 0.35
     var swapWheels = false
     var reverseM1 = false
@@ -170,11 +189,14 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
     }
     func enableDriving() {
         guard ready, roverCompatible, waitingFor == nil else { return }
+        handGate.reset()
         cancelArming = false
         joystick = .zero
         send("ARM")
     }
     func emergencyStop() {
+        handGate.reset()
+        handDecision = HandDecision(message: "Stopped · enable driving to begin")
         cancelArming = true
         armed = false; joystick = .zero; motor1 = 0; motor3 = 0
         // STOP takes precedence over any pending joystick value.
@@ -194,12 +216,16 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
         }
     }
     private func updateMotors() {
-        let mixed = RoverMix.motors(x: joystick.width, y: -joystick.height, limit: speedLimit,
+        let mixed = RoverMix.motors(x: joystick.width, y: -joystick.height, limit: handMode ? min(speedLimit, 0.35) : speedLimit,
                                     swap: swapWheels, reverse1: reverseM1, reverse3: reverseM3)
         motor1 = mixed.0; motor3 = mixed.1
     }
     private func tick() {
         guard ready else { return }
+        if armed && handMode && ProcessInfo.processInfo.systemUptime - lastHandFrameAt > HandDriveGate.maxFrameAge {
+            emergencyStop()
+            status = "Camera stalled — stopped. Enable driving to resume."
+        }
         if waitingFor != nil {
             if Date().timeIntervalSince(lastSentAt) > 0.35 {
                 armed = false; cancelArming = true; joystick = .zero; motor1 = 0; motor3 = 0
@@ -245,7 +271,7 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
             if line == waitingFor {
                 waitingFor = nil; replyTimer?.invalidate()
                 if line == "ROVER:1" { roverCompatible = true; status = "Connected — tap Enable driving" }
-                if line == "OK:ARM", !cancelArming { armed = true; status = "Driving enabled — hold the joystick" }
+                if line == "OK:ARM", !cancelArming { armed = true; status = handMode ? "Driving enabled — open your hand, then pinch" : "Driving enabled — hold the joystick" }
                 if line == "OK:STOP" { armed = false; status = "Stopped — tap Enable driving to resume" }
                 if let command = pendingCommand { pendingCommand = nil; transmit(command) }
             }
@@ -280,6 +306,13 @@ struct ContentView: View {
     @AppStorage("rover.reverse3") private var reverse3 = false
     @GestureState private var touching = false
     @State private var settings = false
+    @State private var guide = false
+    @State private var handMode = false
+    @StateObject private var camera = HandCamera()
+    private func updateCamera() {
+        if handMode && !guide && !settings && scenePhase == .active { camera.start() }
+        else { camera.stop() }
+    }
 
     private func configure() {
         link.speedLimit = speed; link.swapWheels = swap
@@ -287,7 +320,7 @@ struct ContentView: View {
     }
     var body: some View {
         NavigationStack {
-            VStack(spacing: 14) {
+            ScrollView { VStack(spacing: 14) {
                 Label(link.status, systemImage: link.armed ? "steeringwheel" : "antenna.radiowaves.left.and.right")
                     .font(.subheadline).multilineTextAlignment(.center).frame(minHeight: 42)
                 if !link.connected {
@@ -301,9 +334,20 @@ struct ContentView: View {
                     HStack {
                         Button("Disconnect") { link.disconnect() }
                         Spacer()
-                        Button("Wheel setup", systemImage: "gearshape") { link.emergencyStop(); settings = true }
+                        Button("Wheel setup", systemImage: "gearshape") { link.emergencyStop(); camera.stop(); settings = true }
                     }.font(.subheadline)
                 }
+                Picker("Control mode", selection: $handMode) {
+                    Text("Joystick").tag(false)
+                    Text("Hand control").tag(true)
+                }.pickerStyle(.segmented)
+                if handMode {
+                    HandCameraView(camera: camera, decision: link.handDecision)
+                    Text("Pinch to go · move hand left/right to steer · open to stop")
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    Text("Forward only · maximum 35% power · front camera")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
                 HStack {
                     Text("Speed limit")
                     Slider(value: $speed, in: 0.20...0.60, step: 0.05).disabled(link.armed)
@@ -338,28 +382,49 @@ struct ContentView: View {
                         }
                         .onEnded { _ in link.releaseJoystick() })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }.frame(maxHeight: 300)
+                }.frame(height: 260)
                 Text(link.armed ? "Hold to drive · release to stop" : "Enable driving to use the joystick")
                     .font(.subheadline).foregroundStyle(.secondary)
+                }
                 Text("M1 \(link.motor1)   ·   M3 \(link.motor3)").font(.caption.monospaced())
+                Text(link.lastReply).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            .padding() }
+            .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 12) {
                     Button("Enable driving") { configure(); link.enableDriving() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!link.ready || !link.roverCompatible || link.armed)
+                        .disabled(!link.ready || !link.roverCompatible || link.armed || (handMode && !camera.running))
                     Button { link.emergencyStop() } label: {
                         Label("STOP", systemImage: "stop.fill").bold().frame(maxWidth: .infinity)
                     }.buttonStyle(.borderedProminent).tint(.red).disabled(!link.ready)
                 }.controlSize(.large)
-                Text(link.lastReply).font(.caption.monospaced()).foregroundStyle(.secondary)
+                .padding().background(.bar)
             }
-            .padding()
-            .navigationTitle("Rover Joystick")
+            .navigationTitle("Microbit Rover")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { link.emergencyStop(); camera.stop(); guide = true } label: {
+                        Image(systemName: "hand.raised.fingers.spread.fill")
+                    }.accessibilityLabel("Gesture guide")
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { configure() }
-            .onChange(of: touching) { _, active in if !active { link.releaseJoystick() } }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { link.emergencyStop() } }
-            .onDisappear { link.emergencyStop() }
-            .sheet(isPresented: $settings) {
+            .onAppear {
+                configure()
+                camera.onSample = { [weak link] sample in link?.receiveHandSample(sample) }
+                #if targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--gesture-guide") { guide = true }
+                if ProcessInfo.processInfo.arguments.contains("--hand-mode") { handMode = true }
+                #endif
+                updateCamera()
+            }
+            .onChange(of: handMode) { _, enabled in link.setHandMode(enabled); updateCamera() }
+            .sheet(isPresented: $guide, onDismiss: { updateCamera() }) { GestureGuide() }
+            .onChange(of: touching) { _, active in if !active && !handMode { link.releaseJoystick() } }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { link.emergencyStop() }; updateCamera() }
+            .onDisappear { link.emergencyStop(); camera.stop() }
+            .sheet(isPresented: $settings, onDismiss: { updateCamera() }) {
                 NavigationStack {
                     Form {
                         Section("Wheel mapping") {

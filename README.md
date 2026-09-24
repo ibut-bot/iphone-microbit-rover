@@ -1,6 +1,8 @@
 # iPhone + micro:bit rover
 
-A solder-free Bluetooth rover: a native SwiftUI joystick app controls two motors on a Yahboom Super:bit board, through a micro:bit V2 running MakeCode firmware.
+A solder-free Bluetooth rover: a native SwiftUI joystick and hand-gesture app controls two motors on a Yahboom Super:bit board, through a micro:bit V2 running MakeCode firmware.
+
+The front camera recognises hand gestures locally using Apple Vision, with an animated 3D guide available from the hand icon. No LiDAR, Apple Intelligence subscription, cloud processing or model download is required.
 
 The joystick supports differential steering, a speed limit, wheel reversal settings, release-to-stop, and an independent motor-command watchdog. An earlier LED/button Bluetooth proof of concept is included under `examples/led-poc`.
 
@@ -50,6 +52,17 @@ No signing certificates, provisioning profiles or personal development-team ID a
 
 In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiring. Reverse individual motors if forward input spins a wheel backward. Settings persist on the phone. Opening setup stops/disarms the rover.
 
+## Hand control
+
+1. Put the phone upright on a stand with its **front camera facing you**; it does not need to ride on the rover.
+2. Connect the micro:bit, select **Hand control**, and allow camera access.
+3. Tap **Enable driving**, show an open hand, then pinch thumb and index finger together for about a quarter second. Keep your other fingers extended.
+4. Hold the pinch in the centre to move forward. Move the pinched hand toward the left/right of the mirrored preview to curve that way.
+5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. After tracking loss, show an open hand before pinching again.
+6. Tap the **hand icon** at the top right for four animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
+
+Hand mode is forward-only and caps the speed setting at 35%; Joystick retains reverse and turns in place. Camera processing stays on the phone; frames are neither recorded nor uploaded. Use good light, one whole hand in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+
 ## Stop behaviour and limitations
 
 - Boot and connection set motor outputs to zero; ARM is required before movement.
@@ -58,7 +71,8 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 - The firmware disarms after more than 400 ms without a valid drive command, checked every 20 ms. Motors can coast after power removal.
 - App sends at 10 Hz with one outstanding application acknowledgement, avoiding a backlog of movement packets. Missing replies for 350 ms cause a STOP attempt and disconnect.
 - Firmware rejects malformed and out-of-range commands. Driver values are capped at ±160; the app slider permits 20–60% of the 255 scale.
-- No encoders, obstacle avoidance, autonomous navigation, camera or LiDAR integration yet.
+- A separate 300 ms camera-frame timeout disables hand driving even if the Bluetooth command timer is still running. Mode changes and opening the guide/settings also stop and disarm.
+- No encoders, obstacle avoidance, autonomous navigation or LiDAR integration yet.
 - **Bluetooth currently uses No Pairing Required.** Nearby clients can connect; Enable is an interlock, not authentication. Resolve access control before broader use or distribution.
 - Watchdogs are software controls, not a certified emergency stop. Test changes with wheels lifted.
 
@@ -67,9 +81,12 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 | Path | Purpose |
 |---|---|
 | `App/MicrobitLink.swift` | SwiftUI app, BLE transport, joystick and wheel mixing |
+| `App/HandCamera.swift` | Front-camera capture, mirrored preview and Vision landmarks |
+| `App/HandControl.swift` | Testable gesture recognition interlock and steering |
+| `App/GestureGuide.swift` | Procedural articulated 3D hand demonstrations |
 | `Firmware/main.ts` | MakeCode motor protocol, parsing and watchdog |
 | `Firmware/pxt.json` | Firmware configuration and pinned Yahboom dependency |
-| `Tests/` | Firmware handler and actual joystick mixing checks |
+| `Tests/` | Firmware, joystick mixing and gesture interlock checks |
 | `examples/led-poc/` | Original LED commands / button-return experiment |
 | `scripts/` | Build and test entrypoints |
 
@@ -84,7 +101,7 @@ xcodebuild -project MicrobitLink.xcodeproj -scheme MicrobitLink \
   -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO build
 ```
 
-Tests use stubbed hardware APIs, so they validate firmware logic, not electrical behaviour or radio latency. The mixing test extracts the implementation from the app source. Physical driving was reported working by the owner; detailed measurements of stopping distance, Bluetooth loss and loaded performance have not been made.
+Tests use stubbed hardware APIs, so they validate firmware logic, not electrical behaviour or radio latency. The mixing test extracts the implementation from the app source; gesture tests execute the actual camera-independent gate, including tracking loss, stale/out-of-order input, release, dwell and rearming. Simulator visual checks cover the guide and control layout; physical camera recognition is not simulated. Physical driving was reported working by the owner; detailed measurements of stopping distance, Bluetooth loss and loaded performance have not been made.
 
 ## UART protocol
 
