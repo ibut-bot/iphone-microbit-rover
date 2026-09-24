@@ -154,7 +154,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
@@ -162,7 +162,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
                 INFOPLIST_KEY_NSCameraUsageDescription = "Recognize hand gestures on this iPhone to control your rover. No video is recorded or uploaded.";
                 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -175,7 +175,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Microbit Link";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your micro:bit to send test commands and receive button presses.";
@@ -183,7 +183,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
                 INFOPLIST_KEY_NSCameraUsageDescription = "Recognize hand gestures on this iPhone to control your rover. No video is recorded or uploaded.";
                 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.example.microbitlink;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

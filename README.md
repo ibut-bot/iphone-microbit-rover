@@ -67,7 +67,7 @@ Hand mode is forward-only and caps the speed setting at 35%; Joystick retains re
 
 - Boot and connection set motor outputs to zero; ARM is required before movement.
 - Release/gesture cancellation sends zero speed. STOP, either micro:bit button and disconnect disarm.
-- Leaving the app or locking the phone requests STOP.
+- The screen stays awake while the app is active. Leaving the app restores normal auto-lock and requests STOP; manually locking also requests STOP.
 - The firmware disarms after more than 400 ms without a valid drive command, checked every 20 ms. Motors can coast after power removal.
 - App sends at 10 Hz with one outstanding application acknowledgement, avoiding a backlog of movement packets. Missing replies for 350 ms cause a STOP attempt and disconnect.
 - Firmware rejects malformed and out-of-range commands. Driver values are capped at ±160; the app slider permits 20–60% of the 255 scale.

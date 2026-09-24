@@ -411,6 +411,7 @@ struct ContentView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                UIApplication.shared.isIdleTimerDisabled = scenePhase == .active
                 configure()
                 camera.onSample = { [weak link] sample in link?.receiveHandSample(sample) }
                 #if targetEnvironment(simulator)
@@ -422,8 +423,15 @@ struct ContentView: View {
             .onChange(of: handMode) { _, enabled in link.setHandMode(enabled); updateCamera() }
             .sheet(isPresented: $guide, onDismiss: { updateCamera() }) { GestureGuide() }
             .onChange(of: touching) { _, active in if !active && !handMode { link.releaseJoystick() } }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { link.emergencyStop() }; updateCamera() }
-            .onDisappear { link.emergencyStop(); camera.stop() }
+            .onChange(of: scenePhase) { _, phase in
+                UIApplication.shared.isIdleTimerDisabled = phase == .active
+                if phase != .active { link.emergencyStop() }
+                updateCamera()
+            }
+            .onDisappear {
+                UIApplication.shared.isIdleTimerDisabled = false
+                link.emergencyStop(); camera.stop()
+            }
             .sheet(isPresented: $settings, onDismiss: { updateCamera() }) {
                 NavigationStack {
                     Form {
