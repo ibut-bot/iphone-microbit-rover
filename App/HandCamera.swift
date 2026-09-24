@@ -5,18 +5,27 @@ import CoreImage
 
 final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published var image: UIImage?
+    @Published var rearImage: UIImage?
+    @Published var rearMessage = "Starting rear camera…"
     @Published var landmarks: [CGPoint] = []
     @Published var message = "Front camera stays on this phone"
     @Published var running = false
     @Published var denied = false
     var onSample: ((HandSample?) -> Void)?
 
-    private let session = AVCaptureSession()
+    private let session: AVCaptureSession = AVCaptureMultiCamSession.isMultiCamSupported ? AVCaptureMultiCamSession() : AVCaptureSession()
+    private var rearOutput: AVCaptureVideoDataOutput?
+    private var rearLastProcessed: TimeInterval = 0
+    private var viewportAspect: CGFloat = 0.5
+    func setViewport(_ size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        captureQueue.async { [weak self] in self?.viewportAspect = size.width / size.height }
+    }
     private let captureQueue = DispatchQueue(label: "rover.hand-camera", qos: .userInitiated)
     private let context = CIContext()
     private let request = VNDetectHumanHandPoseRequest()
-    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
-    private var rotationObservation: NSKeyValueObservation?
+    private var rotationCoordinators: [AVCaptureDevice.RotationCoordinator] = []
+    private var rotationObservations: [NSKeyValueObservation] = []
     private var configured = false // Capture queue only.
     private var captureGeneration = 0 // Capture queue only.
     private var generation = 0 // Main queue only.
@@ -60,7 +69,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     }
     func stop() {
         requested = false; generation += 1
-        running = false; image = nil; landmarks = []
+        running = false; image = nil; rearImage = nil; landmarks = []
         onSample?(nil)
         captureQueue.async { [weak self] in self?.session.stopRunning() }
     }
@@ -83,60 +92,124 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                     guard self.generation == token else { return }
                     self.requested = false; self.running = false
                     self.message = "Camera unavailable: \(error.localizedDescription)"
+                    self.rearMessage = "Rear camera unavailable"
                     self.onSample?(nil)
                 }
             }
         }
     }
+    private func cameraError(_ message: String) -> NSError {
+        NSError(domain: "Camera", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
     private func configure() throws {
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            throw NSError(domain: "Camera", code: 1, userInfo: [NSLocalizedDescriptionKey: "No front camera on this device"])
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        // Clear a partial setup before retrying a failed configuration.
+        for connection in session.connections { session.removeConnection(connection) }
+        for output in session.outputs { session.removeOutput(output) }
+        for input in session.inputs { session.removeInput(input) }
+        rotationObservations.removeAll(); rotationCoordinators.removeAll(); rearOutput = nil
+        if !(session is AVCaptureMultiCamSession) { session.sessionPreset = .vga640x480 }
+        _ = try addCamera(position: .front)
+        if session is AVCaptureMultiCamSession {
+            do {
+                rearOutput = try addCamera(position: .back)
+                guard session.hardwareCost <= 1 else { throw cameraError("Dual camera exceeds device resources") }
+                DispatchQueue.main.async { self.rearMessage = "Rear camera" }
+            } catch {
+                // A partially configured rear camera is removed without breaking front tracking.
+                for output in session.outputs.dropFirst() { session.removeOutput(output) }
+                for input in session.inputs.dropFirst() { session.removeInput(input) }
+                rearOutput = nil
+                DispatchQueue.main.async { self.rearMessage = "Rear camera unavailable: \(error.localizedDescription)" }
+            }
+        } else {
+            DispatchQueue.main.async { self.rearMessage = "Dual cameras unsupported on this device" }
+        }
+        configured = true
+    }
+    private func addCamera(position: AVCaptureDevice.Position) throws -> AVCaptureVideoDataOutput {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+            throw cameraError("Camera not found")
         }
         let input = try AVCaptureDeviceInput(device: device)
+        if session is AVCaptureMultiCamSession {
+            let formats = device.formats.filter {
+                let d = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+                return $0.isMultiCamSupported && d.width >= 640 && d.height >= 480 &&
+                    $0.videoSupportedFrameRateRanges.contains { $0.minFrameRate <= 15 && $0.maxFrameRate >= 15 }
+            }.sorted {
+                let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+                let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
+                return Int(a.width) * Int(a.height) < Int(b.width) * Int(b.height)
+            }
+            guard let format = formats.first else { throw cameraError("No dual-camera format") }
+            try device.lockForConfiguration()
+            device.activeFormat = format
+            device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 15)
+            device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 15)
+            device.unlockForConfiguration()
+            input.videoMinFrameDurationOverride = CMTime(value: 1, timescale: 15)
+        }
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
         output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.setSampleBufferDelegate(self, queue: captureQueue)
-        session.beginConfiguration()
-        defer { session.commitConfiguration() }
-        session.sessionPreset = .vga640x480
-        guard session.canAddInput(input), session.canAddOutput(output) else {
-            throw NSError(domain: "Camera", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unable to configure camera"])
+        guard session.canAddInput(input) else { throw cameraError("Cannot add camera input") }
+        session.addInputWithNoConnections(input)
+        guard session.canAddOutput(output) else { throw cameraError("Cannot add camera output") }
+        session.addOutputWithNoConnections(output)
+        guard let port = input.ports(for: .video, sourceDeviceType: device.deviceType, sourceDevicePosition: position).first else {
+            throw cameraError("Missing camera port")
         }
-        session.addInput(input); session.addOutput(output)
-        if let connection = output.connection(with: .video) {
-            // Sensor orientation differs by camera (including newer front cameras).
-            // Rotate the actual buffers so the preview and Vision share upright coordinates.
-            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
-            rotationCoordinator = coordinator
-            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
-            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
-            rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self, weak connection] _, change in
-                guard let self, let angle = change.newValue else { return }
-                self.captureQueue.async {
-                    guard let connection, connection.isVideoRotationAngleSupported(angle) else { return }
-                    connection.videoRotationAngle = angle
-                }
+        let connection = AVCaptureConnection(inputPorts: [port], output: output)
+        guard session.canAddConnection(connection) else { throw cameraError("Cannot connect camera") }
+        session.addConnection(connection)
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        rotationCoordinators.append(coordinator)
+        let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+        if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+        rotationObservations.append(coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self, weak connection] _, change in
+            guard let self, let angle = change.newValue else { return }
+            self.captureQueue.async {
+                guard let connection, connection.isVideoRotationAngleSupported(angle) else { return }
+                connection.videoRotationAngle = angle
             }
-            if connection.isVideoMirroringSupported {
-                connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = true
-            }
+        })
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = position == .front
         }
-        configured = true
+        return output
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let timestamp = ProcessInfo.processInfo.systemUptime
-        guard timestamp - lastProcessed >= 1.0 / 15, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if output === rearOutput {
+            guard timestamp - rearLastProcessed >= 1.0 / 16 else { return }
+            rearLastProcessed = timestamp
+            let token = captureGeneration
+            let frame = CIImage(cvPixelBuffer: pixelBuffer)
+            let cgImage = context.createCGImage(frame, from: frame.extent)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.requested, self.generation == token,
+                      ProcessInfo.processInfo.systemUptime - timestamp < 0.5 else { return }
+                self.rearImage = cgImage.map { UIImage(cgImage: $0) }
+            }
+            return
+        }
+        guard timestamp - lastProcessed >= 1.0 / 16 else { return }
         lastProcessed = timestamp
         let token = captureGeneration
-        let frame = CIImage(cvPixelBuffer: pixelBuffer)
+        let source = CIImage(cvPixelBuffer: pixelBuffer)
+        let crop = CameraFraming.crop(source: source.extent.size, aspect: viewportAspect)
+        let frame = source.cropped(to: crop).transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
         let cgImage = context.createCGImage(frame, from: frame.extent)
         var sample: HandSample?
         var dots: [CGPoint] = []
         var status = "Show your thumb and index finger"
         do {
-            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up).perform([request])
+            try VNImageRequestHandler(ciImage: frame, orientation: .up).perform([request])
             let hands = request.results ?? []
             if hands.count > 1 { status = "Use only one hand — stopped" }
             if hands.count == 1, let hand = hands.first {
@@ -183,6 +256,7 @@ struct HandCameraView: View {
     @ObservedObject var camera: HandCamera
     let decision: HandDecision
     var height: CGFloat = 285
+    var minimal = false
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -212,17 +286,21 @@ struct HandCameraView: View {
                     }.foregroundStyle(.white).padding()
                 }
                 VStack(spacing: 8) {
-                    Text(decision.held ? "JOYSTICK ACTIVE · RELEASE TO STOP" : "PINCH CENTRE TO GRAB")
-                        .font(.caption.bold()).padding(10).background(.black.opacity(0.55), in: Capsule())
+                    if !minimal { Text(decision.held ? "JOYSTICK ACTIVE · RELEASE TO STOP" : "PINCH CENTRE TO GRAB")
+                        .font(.caption.bold()).padding(10).background(.black.opacity(0.55), in: Capsule()) }
                     Spacer()
-                    Text(decision.message).font(.headline).multilineTextAlignment(.center)
-                    Text(camera.message).font(.caption).multilineTextAlignment(.center)
+                    if !minimal { Text(decision.message).font(.headline).multilineTextAlignment(.center)
+                    Text(camera.message).font(.caption).multilineTextAlignment(.center) }
                 }.foregroundStyle(.white).padding(14)
                     .background(alignment: .bottom) {
                         LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
                             .allowsHitTesting(false)
                     }.allowsHitTesting(false)
-            }.frame(height: height).clipShape(RoundedRectangle(cornerRadius: 22))
+            }.frame(height: height).clipShape(RoundedRectangle(cornerRadius: minimal ? 0 : 22))
+                .background(GeometryReader { geo in Color.clear
+                    .onAppear { camera.setViewport(geo.size) }
+                    .onChange(of: geo.size) { _, size in camera.setViewport(size) }
+                })
         }
     }
 }

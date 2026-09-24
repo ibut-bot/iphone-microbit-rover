@@ -66,3 +66,16 @@ let lm = mix(left), rm = mix(right), fm = mix(forward), bm = mix(reverse)
 assert(lm.0 < 0 && lm.1 > 0 && rm.0 == lm.1 && rm.1 == lm.0)
 assert(fm.0 > 0 && fm.0 == fm.1 && bm.0 < 0 && bm.0 == bm.1)
 print("PASS: centre-only grab/highlight, deadzone, four directions, diagonal clamp, motor mixing, release/loss stop, stale frames and rearming")
+
+for size in [CGSize(width: 640, height: 480), CGSize(width: 480, height: 640), CGSize(width: 720, height: 720)] {
+    for aspect in [0.46, 0.75, 1.0, 1.8] {
+        let crop = CameraFraming.crop(source: size, aspect: aspect)
+        assert(abs(crop.width / crop.height - aspect) < 0.00001)
+        assert(abs(crop.midX - size.width / 2) < 0.00001)
+        assert(abs(crop.midY - size.height / 2) < 0.00001)
+        assert(crop.width <= size.width && crop.height <= size.height)
+    }
+}
+assert(CameraFraming.crop(source: .zero, aspect: 0.5) == .zero)
+assert(CameraFraming.crop(source: CGSize(width: 640, height: 480), aspect: .nan) == .zero)
+print("PASS: shared camera crop preserves centred joystick coordinates across sensor/view aspect ratios")

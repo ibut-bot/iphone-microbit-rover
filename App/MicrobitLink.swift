@@ -309,6 +309,7 @@ struct ContentView: View {
     @State private var guide = false
     @State private var handMode = false
     @StateObject private var camera = HandCamera()
+    @StateObject private var recording = RoverRecording()
     private func updateCamera() {
         if handMode && !guide && !settings && scenePhase == .active { camera.start() }
         else { camera.stop() }
@@ -320,6 +321,13 @@ struct ContentView: View {
     }
     var body: some View {
         NavigationStack {
+            ZStack {
+            if handMode {
+                ImmersiveHandView(camera: camera, link: link, recording: recording,
+                    exit: { link.emergencyStop(); recording.stop(); handMode = false },
+                    guide: { link.emergencyStop(); recording.stop(); camera.stop(); guide = true },
+                    enable: { configure(); link.enableDriving() })
+            } else {
             GeometryReader { layout in
             VStack(spacing: 8) {
                 Label(link.status, systemImage: link.armed ? "steeringwheel" : "antenna.radiowaves.left.and.right")
@@ -392,8 +400,10 @@ struct ContentView: View {
                 if !handMode { Text(link.lastReply).font(.caption.monospaced()).foregroundStyle(.secondary) }
             }
             .padding(.horizontal, 12).padding(.top, 4) }
+            }
+            }
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 12) {
+                if !handMode { HStack(spacing: 12) {
                     Button("Enable driving") { configure(); link.enableDriving() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!link.ready || !link.roverCompatible || link.armed || (handMode && !camera.running))
@@ -401,9 +411,11 @@ struct ContentView: View {
                         Label("STOP", systemImage: "stop.fill").bold().frame(maxWidth: .infinity)
                     }.buttonStyle(.borderedProminent).tint(.red).disabled(!link.ready)
                 }.controlSize(.large)
-                .padding().background(.bar)
+                .padding().background(.bar) }
             }
             .navigationTitle("Microbit Rover")
+            .toolbar(handMode ? .hidden : .visible, for: .navigationBar)
+            .statusBarHidden(handMode)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { link.emergencyStop(); camera.stop(); guide = true } label: {
@@ -428,11 +440,22 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 UIApplication.shared.isIdleTimerDisabled = phase == .active
                 if phase != .active { link.emergencyStop() }
+                if phase == .background { recording.stop() }
                 updateCamera()
             }
             .onDisappear {
                 UIApplication.shared.isIdleTimerDisabled = false
-                link.emergencyStop(); camera.stop()
+                link.emergencyStop(); recording.stop(); camera.stop()
+            }
+            .onChange(of: camera.running) { _, running in
+                if !running && recording.recording { link.emergencyStop(); recording.stop() }
+            }
+            .sheet(isPresented: $recording.showRecovery) {
+                if let preview = recording.recoveryPreview {
+                    NavigationStack { RecordingRecoveryView(controller: preview)
+                        .toolbar { Button("Done") { recording.showRecovery = false } }
+                    }
+                }
             }
             .sheet(isPresented: $settings, onDismiss: { updateCamera() }) {
                 NavigationStack {

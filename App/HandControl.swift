@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// Coordinates refer to the same upright, mirrored image shown in the preview.
 struct HandSample {
@@ -85,5 +86,15 @@ struct HandDriveGate {
         return HandDecision(held: true, stickX: x / divisor, stickY: y / divisor,
                             steering: steering, forward: forward,
                             message: direction + " · release pinch to stop")
+    }
+}
+
+/// Both Vision and the displayed image use this same centred crop.
+enum CameraFraming {
+    static func crop(source: CGSize, aspect: CGFloat) -> CGRect {
+        guard source.width > 0, source.height > 0, aspect.isFinite, aspect > 0 else { return .zero }
+        let width = min(source.width, source.height * aspect)
+        let height = min(source.height, source.width / aspect)
+        return CGRect(x: (source.width - width) / 2, y: (source.height - height) / 2, width: width, height: height)
     }
 }

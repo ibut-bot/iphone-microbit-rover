@@ -61,9 +61,19 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. Brief tracking loss stops immediately and requires returning to centre and a fresh pinch hold to resume; after loss longer than 0.6 seconds, show an open hand again.
 6. Tap the **hand icon** at the top right for five animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
 
-The camera occupies most of hand-control mode, with live direction feedback overlaid and Enable/STOP always visible.
+Hand control opens an immersive camera screen. Connection, speed and wheel settings are hidden; tap **Exit** to return to them. Enable/STOP, the hand guide and recording remain available as small overlays. The rear-camera inset at bottom right shows the rover while the front camera tracks your fingers.
 
-Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same image coordinates, radius and deadzone. Camera processing stays on the phone; frames are neither recorded nor uploaded. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same image coordinates, radius and deadzone. Camera processing stays on the phone; nothing is uploaded. Frames are recorded locally only when you tap Record. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+
+## Record both cameras
+
+1. Connect the rover before entering Hand control. Aim the rear camera at the rover and the front camera at your hand.
+2. Wait for both previews, then tap **Record**. Allow the iOS screen-recording prompt and permission to add videos to Photos. Microphone recording is off.
+3. Recording starts with the rover disarmed; tap **Enable driving** when ready.
+4. Tap **Stop recording** to finish. The app saves a single composited MP4 to **Photos**, including both cameras, joystick highlighting and visible app controls. This is a screen recording, not two separate camera files.
+5. A local copy is retained under **Files → On My iPhone → Microbit Link**. If Photos permission is denied or saving fails, use **Share video** to export it.
+
+Exit, opening the guide, camera interruption or backgrounding stops recording and attempts to finalize/save. Wait for the save confirmation before force-quitting. Recording needs supported simultaneous front/rear cameras and ReplayKit availability; if the rear camera cannot start, hand control remains available but Record is disabled. Dual streams are configured at 15 fps with low-resolution supported formats to leave capacity for tracking.
 
 ## Stop behaviour and limitations
 
@@ -85,6 +95,7 @@ Hand mode supports forward, reverse and turns in place, and caps the speed setti
 | `App/MicrobitLink.swift` | SwiftUI app, BLE transport, joystick and wheel mixing |
 | `App/HandCamera.swift` | Front-camera capture, mirrored preview and Vision landmarks |
 | `App/HandControl.swift` | Testable gesture recognition interlock and steering |
+| `App/RoverRecording.swift` | Immersive controls, rear-camera inset, ReplayKit capture, Photos/Files saving |
 | `App/GestureGuide.swift` | Procedural articulated 3D hand demonstrations |
 | `Firmware/main.ts` | MakeCode motor protocol, parsing and watchdog |
 | `Firmware/pxt.json` | Firmware configuration and pinned Yahboom dependency |
