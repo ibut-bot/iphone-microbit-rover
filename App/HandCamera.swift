@@ -15,6 +15,8 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
     private let captureQueue = DispatchQueue(label: "rover.hand-camera", qos: .userInitiated)
     private let context = CIContext()
     private let request = VNDetectHumanHandPoseRequest()
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
     private var configured = false // Capture queue only.
     private var captureGeneration = 0 // Capture queue only.
     private var generation = 0 // Main queue only.
@@ -103,7 +105,19 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
         }
         session.addInput(input); session.addOutput(output)
         if let connection = output.connection(with: .video) {
-            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            // Sensor orientation differs by camera (including newer front cameras).
+            // Rotate the actual buffers so the preview and Vision share upright coordinates.
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+            rotationCoordinator = coordinator
+            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+            if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
+            rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self, weak connection] _, change in
+                guard let self, let angle = change.newValue else { return }
+                self.captureQueue.async {
+                    guard let connection, connection.isVideoRotationAngleSupported(angle) else { return }
+                    connection.videoRotationAngle = angle
+                }
+            }
             if connection.isVideoMirroringSupported {
                 connection.automaticallyAdjustsVideoMirroring = false
                 connection.isVideoMirrored = true
