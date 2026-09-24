@@ -10,9 +10,10 @@ from pathlib import Path
 source = Path('App/MicrobitLink.swift').read_text()
 start = source.index('enum RoverMix {')
 end = source.index('struct ContentView: View {', start)
+Path('.build/tests/mix-implementation.swift').write_text('import Foundation\n' + source[start:end])
 Path('.build/tests/mix.swift').write_text('import Foundation\n' + source[start:end] + Path('Tests/mix-assertions.swift').read_text())
 PY
 swift .build/tests/mix.swift
 
-cat App/HandControl.swift Tests/hand-assertions.swift > .build/tests/hand.swift
+cat .build/tests/mix-implementation.swift App/HandControl.swift Tests/hand-assertions.swift > .build/tests/hand.swift
 swift .build/tests/hand.swift

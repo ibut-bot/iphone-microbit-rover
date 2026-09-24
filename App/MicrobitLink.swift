@@ -320,15 +320,18 @@ struct ContentView: View {
     }
     var body: some View {
         NavigationStack {
-            ScrollView { VStack(spacing: 14) {
+            GeometryReader { layout in
+            VStack(spacing: 8) {
                 Label(link.status, systemImage: link.armed ? "steeringwheel" : "antenna.radiowaves.left.and.right")
-                    .font(.subheadline).multilineTextAlignment(.center).frame(minHeight: 42)
+                    .font(.caption).multilineTextAlignment(.center).lineLimit(2).frame(minHeight: 24)
                 if !link.connected {
                     Button(link.scanning ? "Stop scanning" : "Find micro:bit") {
                         if link.scanning { link.stopScan() } else { link.scan() }
                     }.buttonStyle(.borderedProminent).disabled(!link.bluetoothAvailable)
-                    ForEach(link.devices) { device in
-                        Button(device.name) { link.connect(device) }.buttonStyle(.bordered)
+                    if !link.devices.isEmpty {
+                        ScrollView { ForEach(link.devices) { device in
+                            Button(device.name) { link.connect(device) }.buttonStyle(.bordered)
+                        } }.frame(maxHeight: 90)
                     }
                 } else {
                     HStack {
@@ -342,12 +345,10 @@ struct ContentView: View {
                     Text("Hand control").tag(true)
                 }.pickerStyle(.segmented)
                 if handMode {
-                    HandCameraView(camera: camera, decision: link.handDecision)
-                    Text("Pinch to go · move hand left/right to steer · open to stop")
-                        .font(.subheadline).multilineTextAlignment(.center)
-                    Text("Forward only · maximum 35% power · front camera")
-                        .font(.caption).foregroundStyle(.secondary)
+                    HandCameraView(camera: camera, decision: link.handDecision,
+                                   height: max(240, layout.size.height - (link.devices.isEmpty || link.connected ? 145 : 235)))
                 } else {
+                ScrollView { VStack(spacing: 14) {
                 HStack {
                     Text("Speed limit")
                     Slider(value: $speed, in: 0.20...0.60, step: 0.05).disabled(link.armed)
@@ -385,11 +386,12 @@ struct ContentView: View {
                 }.frame(height: 260)
                 Text(link.armed ? "Hold to drive · release to stop" : "Enable driving to use the joystick")
                     .font(.subheadline).foregroundStyle(.secondary)
+                } }
                 }
                 Text("M1 \(link.motor1)   ·   M3 \(link.motor3)").font(.caption.monospaced())
-                Text(link.lastReply).font(.caption.monospaced()).foregroundStyle(.secondary)
+                if !handMode { Text(link.lastReply).font(.caption.monospaced()).foregroundStyle(.secondary) }
             }
-            .padding() }
+            .padding(.horizontal, 12).padding(.top, 4) }
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 12) {
                     Button("Enable driving") { configure(); link.enableDriving() }

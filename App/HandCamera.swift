@@ -143,25 +143,21 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
                 let points = try hand.recognizedPoints(.all)
                 dots = points.values.filter { $0.confidence >= 0.6 }.map { CGPoint(x: $0.location.x, y: 1 - $0.location.y) }
                 func point(_ key: VNHumanHandPoseObservation.JointName) -> CGPoint? {
-                    guard let p = points[key], p.confidence >= 0.6 else { return nil }
+                    guard let p = points[key], p.confidence >= 0.45 else { return nil }
                     return p.location
                 }
                 if let wrist = point(.wrist), let thumb = point(.thumbTip), let index = point(.indexTip),
-                   let indexBase = point(.indexMCP), let littleBase = point(.littleMCP), let middleBase = point(.middleMCP) {
+                   let middleBase = point(.middleMCP) {
                     // Distances use pixels, not distorted normalized coordinates on a portrait frame.
                     func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
                         hypot((a.x - b.x) * frame.extent.width, (a.y - b.y) * frame.extent.height)
                     }
-                    let palmWidth = distance(indexBase, littleBase)
-                    var extended = 0
-                    let fingers: [(VNHumanHandPoseObservation.JointName, VNHumanHandPoseObservation.JointName)] = [(.middleTip, .middlePIP), (.ringTip, .ringPIP), (.littleTip, .littlePIP)]
-                    for (tip, pip) in fingers {
-                        if let t = point(tip), let p = point(pip), distance(t, wrist) > distance(p, wrist) * 1.12 { extended += 1 }
-                    }
-                    if palmWidth > frame.extent.width * 0.055 {
+                    // Wrist-to-middle-base stays measurable when a pinch hides the outer fingers.
+                    let palmSize = distance(wrist, middleBase)
+                    if palmSize > frame.extent.height * 0.045 {
                         sample = HandSample(palmX: (wrist.x + middleBase.x) / 2,
-                                            pinchRatio: distance(thumb, index) / palmWidth,
-                                            otherFingersExtended: extended >= 2, capturedAt: timestamp)
+                                            pinchRatio: distance(thumb, index) / palmSize,
+                                            capturedAt: timestamp)
                         status = "Hand tracked · processing on your iPhone"
                     } else { status = "Bring your hand closer — stopped" }
                 } else { status = "Show your whole hand in good light — stopped" }
@@ -182,6 +178,7 @@ final class HandCamera: NSObject, ObservableObject, AVCaptureVideoDataOutputSamp
 struct HandCameraView: View {
     @ObservedObject var camera: HandCamera
     let decision: HandDecision
+    var height: CGFloat = 285
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -193,7 +190,7 @@ struct HandCameraView: View {
                         ZStack {
                             Image(uiImage: image).resizable().frame(width: size.width, height: size.height)
                             Path { path in
-                                for fraction in [0.42, 0.58] {
+                                for fraction in [HandDriveGate.leftBoundary, HandDriveGate.rightBoundary] {
                                     path.move(to: CGPoint(x: size.width * fraction, y: 0))
                                     path.addLine(to: CGPoint(x: size.width * fraction, y: size.height))
                                 }
@@ -213,11 +210,21 @@ struct HandCameraView: View {
                         } else { Button("Start camera") { camera.start() } }
                     }.foregroundStyle(.white).padding()
                 }
-                VStack { Spacer(); Text("LEFT         CENTRE         RIGHT").font(.caption2.bold()).foregroundStyle(.white).padding(8).background(.black.opacity(0.6), in: Capsule()).padding(10) }
-            }.frame(height: 285).clipShape(RoundedRectangle(cornerRadius: 22))
-            Label(decision.message, systemImage: decision.moving ? "arrow.up.circle.fill" : "hand.raised.fill")
-                .font(.subheadline.weight(.semibold)).foregroundStyle(decision.moving ? .green : .primary)
-            Text(camera.message).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("← LEFT").frame(maxWidth: .infinity)
+                        Text("FORWARD").frame(maxWidth: .infinity)
+                        Text("RIGHT →").frame(maxWidth: .infinity)
+                    }.font(.caption.bold()).padding(10).background(.black.opacity(0.55), in: Capsule())
+                    Spacer()
+                    Text(decision.message).font(.headline).multilineTextAlignment(.center)
+                    Text(camera.message).font(.caption).multilineTextAlignment(.center)
+                }.foregroundStyle(.white).padding(14)
+                    .background(alignment: .bottom) {
+                        LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
+                            .allowsHitTesting(false)
+                    }.allowsHitTesting(false)
+            }.frame(height: height).clipShape(RoundedRectangle(cornerRadius: 22))
         }
     }
 }

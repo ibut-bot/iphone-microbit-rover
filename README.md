@@ -56,10 +56,12 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 
 1. Put the phone upright on a stand with its **front camera facing you**; it does not need to ride on the rover.
 2. Connect the micro:bit, select **Hand control**, and allow camera access.
-3. Tap **Enable driving**, show an open hand, then pinch thumb and index finger together for about a quarter second. Keep your other fingers extended.
-4. Hold the pinch in the centre to move forward. Move the pinched hand toward the left/right of the mirrored preview to curve that way.
-5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. After tracking loss, show an open hand before pinching again.
+3. Tap **Enable driving**, show an open hand, then pinch thumb and index finger together for about 0.15 seconds. Your other fingers can rest naturally.
+4. Hold the pinch in the centre to move forward. Move the pinched hand into the broad left/right zone of the mirrored preview to turn that way. Small movements around the zone boundaries do not make steering flicker. Turns stop the inside wheel and drive the outside wheel.
+5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. Brief tracking loss stops immediately and requires a fresh pinch hold to resume; after loss longer than 0.6 seconds, show an open hand again.
 6. Tap the **hand icon** at the top right for four animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
+
+The camera occupies most of hand-control mode, with live direction feedback overlaid and Enable/STOP always visible.
 
 Hand mode is forward-only and caps the speed setting at 35%; Joystick retains reverse and turns in place. Camera processing stays on the phone; frames are neither recorded nor uploaded. Use good light, one whole hand in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
 

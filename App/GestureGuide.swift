@@ -13,9 +13,9 @@ enum GestureLesson: Int, CaseIterable, Identifiable {
     }
     var instruction: String {
         switch self {
-        case .forward: return "First show an open hand. Touch thumb and index finger together and hold briefly. Keep the other fingers open to move slowly forward."
-        case .left: return "Keep the pinch held and move your hand to the LEFT side of the camera preview. The rover curves left while moving forward."
-        case .right: return "Keep the pinch held and move your hand to the RIGHT side of the camera preview. The rover curves right while moving forward."
+        case .forward: return "First show an open hand. Touch thumb and index finger together and hold briefly. Keep the pinch relaxed; the other fingers can rest naturally."
+        case .left: return "Keep the pinch held and move your hand to the LEFT side of the camera preview. The left wheel stops and the right wheel drives the turn."
+        case .right: return "Keep the pinch held and move your hand to the RIGHT side of the camera preview. The right wheel stops and the left wheel drives the turn."
         case .stop: return "Separate thumb and index finger to stop. If your hand leaves the frame, movement also stops. Tap STOP to disable driving completely."
         }
     }
