@@ -4,6 +4,8 @@ cd "$(dirname "$0")/.."
 node Tests/firmware.cjs
 node Tests/led-firmware.cjs
 mkdir -p .build/tests
+c++ -std=c++11 -Wall -Wextra -Werror Tests/mega-protocol.cpp -o .build/tests/mega-protocol
+.build/tests/mega-protocol
 # Extract the actual implementation so the assertions cannot test a stale copy.
 python3 - <<'PY'
 from pathlib import Path

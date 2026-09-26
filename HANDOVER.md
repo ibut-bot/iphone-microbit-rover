@@ -1,5 +1,16 @@
 # Handover for a fresh experiment session
 
+## New Arduino rover experiment (2026-09-26)
+
+See `Firmware/ArduinoRover.md`. Separate ESP32 BLE→UART bridge and Mega firmware
+have been added without changing the micro:bit or iPhone implementation.
+Owner confirmed this rover's **left=M4, right=M1** on an HW-130 shield.
+`DRIVE_ENABLED=false` deliberately keeps all motors off pending serial wiring
+and power checks. Do not enable it automatically. Missing original Arduino
+sketch was backed up as compiled flash + EEPROM outside this repository.
+ESP32 model was read as ESP32-D0WD-V3; Mega signature is 0x1e9801.
+Physical UART wiring and BLE end-to-end checks remain pending.
+
 ## Paste into the new context
 
 > Continue development of https://github.com/ibut-bot/iphone-microbit-rover. Read HANDOVER.md and README.md first. This is a iPhone Bluetooth joystick and camera gesture app controlling a micro:bit V2 on a Yahboom Super:bit board. M1 is left and M3 is right. Preserve the existing driving mode and motor watchdog while we develop the next experiment. Inspect the checkout and attached devices; do not drive motors automatically. Ask me which experiment to start.
