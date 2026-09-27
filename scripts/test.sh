@@ -19,3 +19,20 @@ swift .build/tests/mix.swift
 
 cat .build/tests/mix-implementation.swift App/HandControl.swift Tests/hand-assertions.swift > .build/tests/hand.swift
 swift .build/tests/hand.swift
+
+cat .build/tests/mix-implementation.swift App/VoiceCommand.swift Tests/voice-assertions.swift > .build/tests/voice.swift
+swift .build/tests/voice.swift
+
+# Exercise the actual app state machine without creating a Bluetooth connection.
+python3 - <<'PY'
+from pathlib import Path
+source = Path('App/MicrobitLink.swift').read_text()
+source = source[source.index('struct NearbyBit:'):source.index('struct ContentView:')]
+source = source.replace('private ', '')
+source = source.replace('central = CBCentralManager(delegate: self, queue: .main)', '// No radio in tests.')
+source = source.replace('guard ready, let peripheral, let writeCharacteristic else { return }', 'guard ready else { return }')
+source = source.replace('peripheral.writeValue(Data((command + "\\n").utf8), for: writeCharacteristic, type: .withResponse)', 'testSent.append(command)')
+source = source.replace('override init() {', 'var testSent: [String] = []\n    override init() {')
+Path('.build/tests/link.swift').write_text('import SwiftUI\nimport CoreBluetooth\n' + Path('App/HandControl.swift').read_text() + Path('App/VoiceCommand.swift').read_text() + source + Path('Tests/link-assertions.swift').read_text())
+PY
+swift .build/tests/link.swift

@@ -318,7 +318,6 @@ struct ImmersiveHandView: View {
     @ObservedObject var recording: RoverRecording
     var exit: () -> Void
     var guide: () -> Void
-    var enable: () -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -351,13 +350,8 @@ struct ImmersiveHandView: View {
                                 Text(recording.status).font(.caption).lineLimit(3)
                                 if let url = recording.savedURL { ShareLink(item: url) { Label("Share video", systemImage: "square.and.arrow.up") } }
                             }
-                            if link.armed {
-                                Button { link.emergencyStop() } label: { Label("STOP", systemImage: "stop.fill").bold() }
-                                    .buttonStyle(.borderedProminent).tint(.red)
-                            } else {
-                                Button("Enable driving", action: enable).buttonStyle(.borderedProminent)
-                                    .disabled(!link.ready || !link.roverCompatible || !camera.running || recording.busy)
-                            }
+                            Button { link.emergencyStop() } label: { Label("STOP", systemImage: "stop.fill").bold() }
+                                .buttonStyle(.borderedProminent).tint(.red)
                         }.padding(10).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
                         Spacer(minLength: 0)
                         ZStack(alignment: .topLeading) {

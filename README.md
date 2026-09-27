@@ -44,11 +44,15 @@ No signing certificates, provisioning profiles or personal development-team ID a
 
 ## Drive
 
+Controls are ready after connecting. The app automatically sends the firmware ARM
+handshake for a fresh input; connecting or changing modes never moves the rover.
+Stop cancels pending input, and late ARM replies cannot revive a released command.
+
 1. Power the motor board. Lift the wheels for the first direction test.
 2. Open **Microbit Link**, tap **Find micro:bit**, and select your board.
-3. Wait for **Connected — tap Enable driving**. Default speed limit is 35%.
-4. Tap **Enable driving**. Hold and move the joystick. Up is forward toward the LED face; sideways at centre turns in place.
-5. Release to stop. Red **STOP** disables driving; tap Enable again to resume.
+3. Wait for **Connected — controls ready**. Default speed limit is 35%.
+4. Hold and move the joystick. Up is forward toward the LED face; sideways at centre turns in place.
+5. Release to stop. Red **STOP** cancels movement; lift your finger and make a fresh joystick touch to resume.
 
 In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiring. Reverse individual motors if forward input spins a wheel backward. Settings persist on the phone. Opening setup stops/disarms the rover.
 
@@ -56,20 +60,54 @@ In **Wheel setup**, keep “M1 is the right wheel” off for the documented wiri
 
 1. Put the phone upright on a stand with its **front camera facing you**; it does not need to ride on the rover.
 2. Connect the micro:bit, select **Hand control**, and allow camera access.
-3. Tap **Enable driving**, separate thumb and index finger, then pinch thumb and index finger together inside the joystick’s dashed centre circle for about 0.15 seconds to grab it. Only thumb and index landmarks are used. Your wrist and other fingers are ignored; steer with the midpoint between the two fingertips.
+3. Separate thumb and index finger, then pinch thumb and index finger together inside the joystick’s dashed centre circle for about 0.15 seconds to grab it. Only thumb and index landmarks are used. Your wrist and other fingers are ignored; steer with the midpoint between the two fingertips.
 4. The translucent joystick turns green when grabbed, including while centred and stopped. Move the held pinch UP for forward, DOWN for reverse, LEFT/RIGHT to turn, or diagonally to combine movement and steering. Distance from centre sets power. Returning to the dashed centre zone stops movement.
 5. Open the pinch to stop. Losing the hand, ambiguous/multiple hands or low-confidence landmarks also stops movement. Brief tracking loss stops immediately and requires returning to centre and a fresh pinch hold to resume; after loss longer than 0.6 seconds, show an open hand again.
-6. Tap the **hand icon** at the top right for five animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; enable driving again after closing it.
+6. Tap the **hand icon** at the top right for five animated 3D demonstrations, available even when disconnected. Opening the guide stops/disarms the rover; open your hand and make a fresh pinch after closing it.
 
-Hand control opens an immersive camera screen. Connection, speed and wheel settings are hidden; tap **Exit** to return to them. Enable/STOP, the hand guide and recording remain available as small overlays. The rear-camera inset at bottom right shows the rover while the front camera tracks your fingers.
+Hand control opens an immersive camera screen. Connection, speed and wheel settings are hidden; tap **Exit** to return to them. STOP, the hand guide and recording remain available as small overlays. The rear-camera inset at bottom right shows the rover while the front camera tracks your fingers.
 
 Hand mode supports forward, reverse and turns in place, and caps the speed setting at 35%. Its overlay and controller use the same displayed-image coordinates, radius and deadzone. Detection uses the full camera frame, then maps landmarks onto the preview; shorter stick travel keeps turns away from the edges. Index-finger scale is stabilized for up to 400 ms, but both fingertips must be detected live. Camera processing stays on the phone; nothing is uploaded. Frames are recorded locally only when you tap Record. Use good light, thumb/index tips and the index knuckle in view, and test first with wheels lifted. Landmark recognition and gesture thresholds still need physical testing across hands and lighting.
+
+## Voice control (1.7.2)
+
+Connect the rover on the main screen, then tap **Voice control → Start listening**.
+Allow Microphone and Speech Recognition, then speak. No Enable button is needed.
+Voice runs only on its own screen; exit to return to joystick/hand mode and recording.
+
+- “Rover, forward” / “Rover, back”: five seconds, then zero output.
+- “Rover, left” / “Rover, right”: one second of rotation in place, then zero output.
+- “Rover, can you turn right a little”: half a second; polite can/could/would/will-you forms use the direct parser.
+- “Rover, back up a little”: one second. “Rover, left a little”: half a second.
+- “Stop”, “halt”, “freeze” or “cancel”: stops and disarms without a wake prefix.
+  Say a fresh “Rover…” command to move again.
+- Movement is capped at 25% (or a lower saved speed limit). Wheel preferences apply.
+- A new direction replaces the current timed action; commands are never queued.
+
+Pause briefly after each command. Movement is interpreted after 0.9 seconds without
+transcript changes or a final speech result; stop words are checked in partial results.
+Speech uses Apple's on-device English (Australia) recognizer and requires local
+recognition availability. It does not fall back to sending microphone audio to a server.
+Standard commands do not require Apple Intelligence. On iOS 26+, when the local
+Foundation Models model is available, flexible requests such as “Rover, could you
+move to the left please” receive constrained intent classification. Only one explicit
+direction is allowed; AI cannot choose motor power or extend durations. Responses
+older than three seconds or invalidated by new speech/Stop/disarming are discarded.
+Commands specifying distances, angles, durations or multiple actions are unsupported.
+
+The screen shows heard text, listening state and model availability. Start listening
+does not arm the rover. STOP, Exit, locking/backgrounding, microphone failure and
+audio interruptions disarm. The microphone stays running across commands; cumulative
+transcripts are consumed once. Recognition renews every 45 seconds without requiring
+a manual Enable step. Recoverable recognizer failures stop motion and retry locally. USB is not needed during use. Initial motor testing should be with wheels lifted.
+Voice recognition and AI intent quality still require owner testing on the physical phone;
+spoken stop is subject to recognition delay, so keep the on-screen STOP accessible.
 
 ## Record both cameras
 
 1. Connect the rover before entering Hand control. Aim the rear camera at the rover and the front camera at your hand.
 2. Wait for both previews, then tap **Record**. The frame counter confirms video frames are being written; no screen-recording prompt is needed. Allow permission to add videos to Photos when saving. Allow Microphone access when starting a recording. The counter shows “mic on” once audio samples arrive.
-3. Recording starts with the rover disarmed; tap **Enable driving** when ready.
+3. Recording starts with the rover stopped; open your hand and make a fresh pinch when ready.
 4. Tap **Stop recording** to finish. The app saves a single composited MP4 to **Photos**, including both cameras and joystick highlighting. Camera frames and joystick state are composited directly using AVAssetWriter; menus and buttons are not recorded.
 5. A local copy is retained under **Files → On My iPhone → Microbit Link**. The **Recordings** list opens after saving and is available from the film-stack icon, including after relaunch. Use **Share / Save** or **Save to Photos** to recover/export a clip. After a successful automatic save, the Photos button becomes **Saved to Photos ✓**; saved state persists across launches and repeat taps cannot create another Photos copy. The Files backup remains available.
 
@@ -85,7 +123,7 @@ Exit, opening the guide, camera interruption or backgrounding stops recording an
 - Firmware rejects malformed and out-of-range commands. Driver values are capped at ±160; the app slider permits 20–60% of the 255 scale.
 - A separate 300 ms camera-frame timeout disables hand driving even if the Bluetooth command timer is still running. Mode changes and opening the guide/settings also stop and disarm.
 - No encoders, obstacle avoidance, autonomous navigation or LiDAR integration yet.
-- **Bluetooth currently uses No Pairing Required.** Nearby clients can connect; Enable is an interlock, not authentication. Resolve access control before broader use or distribution.
+- **Bluetooth currently uses No Pairing Required.** Nearby clients can connect; The ARM protocol is not authentication. Resolve access control before broader use or distribution.
 - Watchdogs are software controls, not a certified emergency stop. Test changes with wheels lifted.
 
 ## Code

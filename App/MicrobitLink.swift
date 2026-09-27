@@ -24,6 +24,55 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
     @Published var motor1 = 0
     @Published var motor3 = 0
     @Published var handDecision = HandDecision(message: "Open your hand to begin")
+    @Published var voiceMovement = "Ready for a voice command"
+    @Published var stopRevision = 0
+    private var pendingDrive = PendingDriveInput()
+    private var lastJoystickGesture: UUID?
+    private var blockedJoystickGesture: UUID?
+    private var controlsActive = true
+    var handInputActive = false
+    func setControlsActive(_ active: Bool) {
+        controlsActive = active
+        if !active { emergencyStop() }
+    }
+    private var voiceMode = false
+    private var voiceMotion = VoiceMotionGate()
+    func setVoiceMode(_ enabled: Bool) {
+        emergencyStop()
+        voiceMode = enabled
+        if enabled { handMode = false }
+    }
+    func receiveVoiceCommand(_ command: VoiceCommand) {
+        if command.direction == .stop { emergencyStop(); return }
+        guard voiceMode, ready, roverCompatible else { return }
+        requestMovement(command.direction.vector, voice: command)
+    }
+    private func applyMovement(_ value: CGSize, voice: VoiceCommand?) {
+        if let voice {
+            guard voiceMotion.start(voice, now: ProcessInfo.processInfo.systemUptime, enabled: armed) else { return }
+            voiceMovement = "\(voice.direction.rawValue.capitalized) · \(voice.duration.formatted()) seconds"
+        }
+        joystick = value
+        updateMotors()
+    }
+    private func requestMovement(_ value: CGSize, voice: VoiceCommand? = nil) {
+        guard controlsActive, ready, roverCompatible else { return }
+        if value == .zero { releaseJoystick(); return }
+        if armed { applyMovement(value, voice: voice); return }
+        pendingDrive.set(value, voice: voice, now: ProcessInfo.processInfo.systemUptime)
+        requestAutomaticArm()
+    }
+    private func requestAutomaticArm() {
+        guard controlsActive, ready, roverCompatible, !armed, waitingFor == nil, pendingCommand == nil,
+              pendingDrive.fresh(now: ProcessInfo.processInfo.systemUptime) != nil else { return }
+        cancelArming = false
+        transmit("ARM")
+    }
+    func moveJoystick(_ value: CGSize, gesture: UUID) {
+        guard !handMode, !voiceMode, gesture != blockedJoystickGesture else { return }
+        lastJoystickGesture = gesture
+        requestMovement(value)
+    }
     private var handMode = false
     private var handGate = HandDriveGate()
     private var lastHandFrameAt: TimeInterval = 0
@@ -34,13 +83,13 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
         lastHandFrameAt = 0
     }
     func receiveHandSample(_ sample: HandSample?) {
-        guard handMode else { return }
+        guard handMode, handInputActive, controlsActive else { return }
         let now = ProcessInfo.processInfo.systemUptime
         lastHandFrameAt = sample?.capturedAt ?? now
-        handDecision = handGate.evaluate(sample, now: now, enabled: armed)
+        handDecision = handGate.evaluate(sample, now: now, enabled: ready && roverCompatible)
         if handDecision.moving {
             move(CGSize(width: handDecision.steering, height: -handDecision.forward))
-        } else if joystick != .zero { releaseJoystick() }
+        } else if joystick != .zero || pendingDrive.input != nil { releaseJoystick() }
     }
     var speedLimit = 0.35
     var swapWheels = false
@@ -127,6 +176,9 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
     }
     private func resetConnection() {
         driveTimer?.invalidate()
+        pendingDrive.clear(); stopRevision += 1; blockedJoystickGesture = lastJoystickGesture
+        handGate.reset()
+        voiceMotion.cancel(); voiceMovement = "Disconnected"
         armed = false; roverCompatible = false; joystick = .zero
         motor1 = 0; motor3 = 0; pendingCommand = nil
         ready = false; connected = false; peripheral = nil
@@ -187,28 +239,21 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
         guard ready else { return }
         if waitingFor == nil { transmit(command) }
     }
-    func enableDriving() {
-        guard ready, roverCompatible, waitingFor == nil else { return }
-        handGate.reset()
-        cancelArming = false
-        joystick = .zero
-        send("ARM")
-    }
     func emergencyStop() {
+        pendingDrive.clear(); stopRevision += 1; blockedJoystickGesture = lastJoystickGesture
+        voiceMotion.cancel(); voiceMovement = "Stopped"
         handGate.reset()
-        handDecision = HandDecision(message: "Stopped · enable driving to begin")
+        handDecision = HandDecision(message: "Stopped · open your hand to begin again")
         cancelArming = true
         armed = false; joystick = .zero; motor1 = 0; motor3 = 0
         // STOP takes precedence over any pending joystick value.
         pendingCommand = "STOP"
         if waitingFor == nil, ready { pendingCommand = nil; transmit("STOP") }
     }
-    func move(_ value: CGSize) {
-        guard armed else { return }
-        joystick = value
-        updateMotors()
-    }
+    func move(_ value: CGSize) { requestMovement(value) }
     func releaseJoystick() {
+        pendingDrive.clear()
+        if !armed && waitingFor == "OK:ARM" { emergencyStop(); return }
         joystick = .zero; motor1 = 0; motor3 = 0
         if armed {
             if waitingFor == nil { transmit("D:0:0") }
@@ -216,18 +261,26 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
         }
     }
     private func updateMotors() {
-        let mixed = RoverMix.motors(x: joystick.width, y: -joystick.height, limit: handMode ? min(speedLimit, 0.35) : speedLimit,
+        let mixed = RoverMix.motors(x: joystick.width, y: -joystick.height, limit: voiceMode ? min(speedLimit, 0.25) : handMode ? min(speedLimit, 0.35) : speedLimit,
                                     swap: swapWheels, reverse1: reverseM1, reverse3: reverseM3)
         motor1 = mixed.0; motor3 = mixed.1
     }
     private func tick() {
         guard ready else { return }
+        if voiceMode && voiceMotion.expire(now: ProcessInfo.processInfo.systemUptime) {
+            releaseJoystick()
+            voiceMovement = "Movement complete · listening"
+        }
+        if !armed { voiceMotion.cancel() }
         if armed && handMode && ProcessInfo.processInfo.systemUptime - lastHandFrameAt > HandDriveGate.maxFrameAge {
             emergencyStop()
-            status = "Camera stalled — stopped. Enable driving to resume."
+            status = "Camera stalled — stopped. Open your hand to resume."
         }
         if waitingFor != nil {
             if Date().timeIntervalSince(lastSentAt) > 0.35 {
+                pendingDrive.clear(); stopRevision += 1; blockedJoystickGesture = lastJoystickGesture
+                handGate.reset()
+                voiceMotion.cancel(); voiceMovement = "Stopped"
                 armed = false; cancelArming = true; joystick = .zero; motor1 = 0; motor3 = 0
                 pendingCommand = nil; waitingFor = nil
                 // Firmware independently disarms after 400 ms without a valid drive packet.
@@ -242,6 +295,7 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
             return
         }
         if let command = pendingCommand { pendingCommand = nil; transmit(command); return }
+        if !armed { requestAutomaticArm(); return }
         if armed {
             updateMotors()
             transmit("D:\(motor1):\(motor3)")
@@ -261,23 +315,36 @@ final class BluetoothLink: NSObject, ObservableObject, CBCentralManagerDelegate,
             let line = String(decoding: receiveBuffer[..<newline], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             receiveBuffer.removeSubrange(...newline)
             guard !line.isEmpty else { continue }
-            lastReply = line
-            if line != "OK:D" { record("← \(line)") }
-            if line.hasPrefix("SAFE:") || line.hasPrefix("ERR:") {
-                armed = false; cancelArming = true; joystick = .zero; motor1 = 0; motor3 = 0
-                pendingCommand = nil; waitingFor = nil
-                status = "Stopped: \(line)"
-            }
-            if line == waitingFor {
-                waitingFor = nil; replyTimer?.invalidate()
-                if line == "ROVER:1" { roverCompatible = true; status = "Connected — tap Enable driving" }
-                if line == "OK:ARM", !cancelArming { armed = true; status = handMode ? "Driving enabled — open your hand, then pinch" : "Driving enabled — hold the joystick" }
-                if line == "OK:STOP" { armed = false; status = "Stopped — tap Enable driving to resume" }
-                if let command = pendingCommand { pendingCommand = nil; transmit(command) }
-            }
+            receiveReplyLine(line)
         }
         if receiveBuffer.count > 1024 { receiveBuffer.removeAll(); record("Discarded oversized reply") }
     }
+    private func receiveReplyLine(_ line: String) {
+        lastReply = line
+        if line != "OK:D" { record("← \(line)") }
+        if line.hasPrefix("SAFE:") || line.hasPrefix("ERR:") {
+            pendingDrive.clear(); stopRevision += 1; blockedJoystickGesture = lastJoystickGesture
+            handGate.reset()
+            voiceMotion.cancel(); voiceMovement = "Stopped"
+            armed = false; cancelArming = true; joystick = .zero; motor1 = 0; motor3 = 0
+            pendingCommand = nil; waitingFor = nil
+            status = "Stopped: \(line)"
+        }
+        if line == waitingFor {
+            waitingFor = nil; replyTimer?.invalidate()
+            if line == "ROVER:1" { roverCompatible = true; status = "Connected — controls ready" }
+            if line == "OK:ARM", !cancelArming {
+                if let input = pendingDrive.take(now: ProcessInfo.processInfo.systemUptime) {
+                    armed = true
+                    status = "Connected — controls ready"
+                    applyMovement(input.vector, voice: input.voice)
+                } else { emergencyStop() }
+            }
+            if line == "OK:STOP" { armed = false; status = "Stopped — ready for a fresh command" }
+            if let command = pendingCommand { pendingCommand = nil; transmit(command) }
+        }
+    }
+
 }
 
 // x: right, y: forward. Output order is physical board ports M1, M3.
@@ -305,13 +372,16 @@ struct ContentView: View {
     @AppStorage("rover.reverse1") private var reverse1 = false
     @AppStorage("rover.reverse3") private var reverse3 = false
     @GestureState private var touching = false
+    @State private var joystickGesture: UUID?
     @State private var settings = false
     @State private var guide = false
     @State private var handMode = false
+    @State private var voiceMode = false
     @StateObject private var camera = HandCamera()
     @StateObject private var recording = RoverRecording()
     private func updateCamera() {
-        if handMode && !guide && !settings && scenePhase == .active { camera.start() }
+        link.handInputActive = handMode && !guide && !settings && !recording.showLibrary && scenePhase == .active
+        if link.handInputActive { camera.start() }
         else { camera.stop() }
     }
 
@@ -325,8 +395,7 @@ struct ContentView: View {
             if handMode {
                 ImmersiveHandView(camera: camera, link: link, recording: recording,
                     exit: { link.emergencyStop(); recording.stop(); handMode = false },
-                    guide: { link.emergencyStop(); recording.stop(); camera.stop(); guide = true },
-                    enable: { configure(); link.enableDriving() })
+                    guide: { link.emergencyStop(); recording.stop(); link.handInputActive = false; camera.stop(); guide = true })
             } else {
             GeometryReader { layout in
             VStack(spacing: 8) {
@@ -345,13 +414,16 @@ struct ContentView: View {
                     HStack {
                         Button("Disconnect") { link.disconnect() }
                         Spacer()
-                        Button("Wheel setup", systemImage: "gearshape") { link.emergencyStop(); camera.stop(); settings = true }
+                        Button("Wheel setup", systemImage: "gearshape") { link.emergencyStop(); link.handInputActive = false; camera.stop(); settings = true }
                     }.font(.subheadline)
                 }
                 Picker("Control mode", selection: $handMode) {
                     Text("Joystick").tag(false)
                     Text("Hand control").tag(true)
                 }.pickerStyle(.segmented)
+                Button("Voice control", systemImage: "mic.fill") {
+                    configure(); link.emergencyStop(); camera.stop(); voiceMode = true
+                }.buttonStyle(.bordered).disabled(recording.recording || recording.busy)
                 if handMode {
                     HandCameraView(camera: camera, decision: link.handDecision,
                                    height: max(240, layout.size.height - (link.devices.isEmpty || link.connected ? 145 : 235)))
@@ -367,7 +439,7 @@ struct ContentView: View {
                     let size = min(geometry.size.width, geometry.size.height)
                     let radius = max(1, (size - 72) / 2)
                     ZStack {
-                        Circle().fill(Color.blue.opacity(link.armed ? 0.12 : 0.04))
+                        Circle().fill(Color.blue.opacity(link.roverCompatible ? 0.12 : 0.04))
                         Circle().stroke(Color.blue.opacity(0.25), lineWidth: 2)
                         Rectangle().fill(Color.secondary.opacity(0.15)).frame(width: 1)
                         Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1)
@@ -375,7 +447,7 @@ struct ContentView: View {
                         Image(systemName: "arrow.down").offset(y: radius - 8).foregroundStyle(.secondary)
                         Image(systemName: "arrow.left").offset(x: -radius + 8).foregroundStyle(.secondary)
                         Image(systemName: "arrow.right").offset(x: radius - 8).foregroundStyle(.secondary)
-                        Circle().fill(link.armed ? Color.blue : Color.gray).frame(width: 70, height: 70)
+                        Circle().fill(link.roverCompatible ? Color.blue : Color.gray).frame(width: 70, height: 70)
                             .shadow(color: .black.opacity(0.15), radius: 5, y: 3)
                             .offset(x: link.joystick.width * radius, y: link.joystick.height * radius)
                     }
@@ -387,12 +459,14 @@ struct ContentView: View {
                             let dx = (value.location.x - size / 2) / radius
                             let dy = (value.location.y - size / 2) / radius
                             let length = max(1, hypot(dx, dy))
-                            link.move(CGSize(width: dx / length, height: dy / length))
+                            configure()
+                            if joystickGesture == nil { joystickGesture = UUID() }
+                            link.moveJoystick(CGSize(width: dx / length, height: dy / length), gesture: joystickGesture!)
                         }
-                        .onEnded { _ in link.releaseJoystick() })
+                        .onEnded { _ in joystickGesture = nil; link.releaseJoystick() })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }.frame(height: 260)
-                Text(link.armed ? "Hold to drive · release to stop" : "Enable driving to use the joystick")
+                Text(link.roverCompatible ? "Hold to drive · release to stop" : "Connect your rover to use the joystick")
                     .font(.subheadline).foregroundStyle(.secondary)
                 } }
                 }
@@ -404,9 +478,6 @@ struct ContentView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if !handMode { HStack(spacing: 12) {
-                    Button("Enable driving") { configure(); link.enableDriving() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!link.ready || !link.roverCompatible || link.armed || (handMode && !camera.running))
                     Button { link.emergencyStop() } label: {
                         Label("STOP", systemImage: "stop.fill").bold().frame(maxWidth: .infinity)
                     }.buttonStyle(.borderedProminent).tint(.red).disabled(!link.ready)
@@ -422,7 +493,7 @@ struct ContentView: View {
                         .accessibilityLabel("Saved recordings")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { link.emergencyStop(); camera.stop(); guide = true } label: {
+                    Button { link.emergencyStop(); link.handInputActive = false; camera.stop(); guide = true } label: {
                         Image(systemName: "hand.raised.fingers.spread.fill")
                     }.accessibilityLabel("Gesture guide")
                 }
@@ -431,6 +502,7 @@ struct ContentView: View {
             .onAppear {
                 UIApplication.shared.isIdleTimerDisabled = scenePhase == .active
                 configure()
+                link.setControlsActive(scenePhase == .active)
                 camera.onSample = { [weak link] sample in link?.receiveHandSample(sample) }
                 camera.onFrame = { [weak camera, weak link, weak recording] in
                     guard let camera, let link, let recording else { return }
@@ -440,24 +512,31 @@ struct ContentView: View {
                 if ProcessInfo.processInfo.arguments.contains("--recording-smoke-test") { recording.runSimulatorSmokeTest() }
                 if ProcessInfo.processInfo.arguments.contains("--gesture-guide") { guide = true }
                 if ProcessInfo.processInfo.arguments.contains("--hand-mode") { handMode = true }
+                if ProcessInfo.processInfo.arguments.contains("--voice-mode") { voiceMode = true }
                 #endif
                 updateCamera()
             }
-            .onChange(of: handMode) { _, enabled in link.setHandMode(enabled); updateCamera() }
+            .onChange(of: handMode) { _, enabled in configure(); link.setHandMode(enabled); updateCamera() }
+            .fullScreenCover(isPresented: $voiceMode) { VoiceControlView(link: link) }
             .sheet(isPresented: $guide, onDismiss: { updateCamera() }) { GestureGuide() }
-            .onChange(of: touching) { _, active in if !active && !handMode { link.releaseJoystick() } }
+            .onChange(of: touching) { _, active in if !active && !handMode { joystickGesture = nil; link.releaseJoystick() } }
             .onChange(of: scenePhase) { _, phase in
                 UIApplication.shared.isIdleTimerDisabled = phase == .active
-                if phase != .active { link.emergencyStop() }
+                link.setControlsActive(phase == .active)
                 if phase == .background { recording.stop() }
                 updateCamera()
             }
             .onDisappear {
-                UIApplication.shared.isIdleTimerDisabled = false
+                if !voiceMode { UIApplication.shared.isIdleTimerDisabled = false }
+                link.handInputActive = false
                 link.emergencyStop(); recording.stop(); camera.stop()
             }
             .onChange(of: camera.running) { _, running in
                 if !running && recording.recording { link.emergencyStop(); recording.stop() }
+            }
+            .onChange(of: recording.showLibrary) { _, shown in
+                if shown { link.emergencyStop() }
+                updateCamera()
             }
             .sheet(isPresented: $recording.showLibrary) { RecordingLibraryView(recording: recording) }
             .sheet(isPresented: $settings, onDismiss: { updateCamera() }) {

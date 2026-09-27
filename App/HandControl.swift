@@ -36,7 +36,7 @@ struct HandDriveGate {
     mutating func evaluate(_ sample: HandSample?, now: TimeInterval, enabled: Bool) -> HandDecision {
         guard enabled else {
             reset()
-            return HandDecision(message: "Enable driving · separate thumb and index")
+            return HandDecision(message: "Connect your rover · separate thumb and index")
         }
         guard let sample else {
             // Stop immediately, but don't require another open-hand ritual for one dropped frame.

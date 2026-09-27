@@ -176,7 +176,7 @@ struct GestureGuide: View {
                     Label("Phone upright on a stand, front camera facing you", systemImage: "iphone.gen3")
                     Label("Only thumb and index matter; keep their tips and index knuckle visible", systemImage: "hand.raised.fingers.spread")
                     Label("Preview is mirrored: screen-left steers left", systemImage: "arrow.left.arrow.right")
-                    Text("Tap Enable driving again after closing this guide. Hand mode supports forward, reverse and turning, capped at 35% power. The dashed centre circle is the stopped zone.")
+                    Text("After closing this guide, open your hand and pinch the centre to begin. Hand mode supports forward, reverse and turning, capped at 35% power. The dashed centre circle is the stopped zone.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }.padding(20)
             }

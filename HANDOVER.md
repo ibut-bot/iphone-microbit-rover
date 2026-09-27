@@ -1,5 +1,37 @@
 # Handover for a fresh experiment session
 
+## Voice control update (2026-09-27, 1.7.2/build 15)
+
+Owner confirmed plain “Rover right” works. The failing Heard text was “Rover can you
+turn right a little”. This previously fell through to optional AI classification.
+1.7.2 directly parses can/could/would/will-you prefixes after Rover, with regression
+tests for both directions and rejection of negated, unrelated and compound requests.
+Turn power and duration are unchanged. Physical verification of this fix is pending.
+
+### Prior 1.7.1 update
+
+Owner tested 1.7.0: “Rover forward” moved, but later phrases updated the Heard text
+without movement. Exact failed transcript and device error were not captured.
+1.7.1 keeps microphone capture running across commands and consumes timestamped
+recognizer segments once, instead of restarting capture for each phrase. Incomplete
+“Rover, go…” prefixes survive a pause. Recognizer failures stop motion and retry.
+
+Owner explicitly requested removal of Enable driving everywhere. Joystick, hand and
+voice now automatically ARM on a fresh input. Stop still disarms and cancels all
+pending input; the next fresh command re-arms. Held joystick gestures and held pinches
+cannot revive after Stop, and inactive/background input is rejected. No firmware change.
+Forward/back run five seconds, turns one second, voice capped at 25%. “A little” uses
+one-second translation or half-second rotation. Optional on-device Foundation Models
+classification and standard commands remain. Voice is separate from hand recording.
+
+Tests cover sequential/cumulative voice input, automatic arm/acknowledgement through
+the actual BluetoothLink state machine with BLE transport stubbed, stop/release during
+ARM, expired input, and joystick/hand re-entry. Physical confirmation is still needed.
+Device and simulator builds passed; Voice UI was inspected in the simulator.
+Version 1.7.1/build 14 was installed and its installed version verified on the iPhone.
+No motors were driven by the assistant. The update preserves the existing local app identity. Public Xcode signing settings
+remain generic; each installer must use their own Apple Account and bundle identifier.
+
 ## New Arduino rover experiment (2026-09-26)
 
 See `Firmware/ArduinoRover.md`. Separate ESP32 BLE→UART bridge and Mega firmware
@@ -40,9 +72,9 @@ App/MicrobitLink.swift currently contains:
 
 - **BluetoothLink**: BLE scan/connection, UART service discovery, HELLO compatibility handshake, acknowledgement handling, 10 Hz command timer, logs.
 - **RoverMix**: deadzone, forward/turn differential mixing, wheel swap/reversal, speed limits.
-- **ContentView**: spring-centred joystick, hand-mode selection, connection controls, enable/stop, speed and wheel settings.
+- **ContentView**: spring-centred joystick, hand-mode selection, connection controls, automatic arm/stop, speed and wheel settings.
 
-App/HandCamera.swift uses AVCaptureDevice.RotationCoordinator for camera-specific buffer rotation (a fixed 90-degree angle produced a sideways preview on the iPhone 17 Pro). It uses AVCaptureMultiCamSession with explicit connections for front and rear video outputs, selecting low-resolution supported formats at 15 fps. It captures mirrored front-camera frames and extracts Apple Vision hand landmarks at up to 15 Hz. Vision reads the full front sensor frame so sideways movement does not crop away the index knuckle. Only the displayed preview is centre-cropped; CameraFraming projects full-frame landmarks into it, with symmetry/alignment tests. Version 1.5.1 shortens joystick radius from 30% to 24% of viewport width and stabilises index-finger scale for up to 400 ms when the knuckle is hidden/foreshortened. Both fingertips must still be detected live; lost tips stop immediately. Rear frames are unmirrored in the bottom-right inset. App/HandControl.swift owns a pure, testable gesture gate: open hand after enable/loss, thumb/index pinch held 150 ms inside the centre circle to grab a translucent joystick, then two-axis displacement to drive forward/reverse/turn, immediate zero on release/invalid hand. Only thumb/index landmarks are used: thumb tip, index tip, index MCP and index PIP. The index proximal segment times 2.2 estimates scale; the tip midpoint determines steering. No wrist or other-finger landmarks are required. Vision still runs its general hand model, so physical recognition with the rest of the hand hidden is not guaranteed. Brief tracking loss can resume only after a fresh dwell; loss over 600 ms requires opening again. The joystick highlights green while grabbed, even at neutral. Release/loss clears the grab; reacquisition must occur at centre. Normalised image coordinates are aspect-corrected to keep travel isotropic; deflection is radially clamped with a 28% deadzone. Hand mode uses RoverMix for forward/reverse/turns, capped at 35% power. BluetoothLink independently disarms if camera callbacks stall for 300 ms. App/GestureGuide.swift renders procedural SceneKit 3D animations for forward/reverse/left/right/stop. The toolbar hand icon always opens it, stops the rover and pauses the camera. Closing it requires rearming. Camera frames stay local. Version 1.6 replaces the failing ReplayKit export with a serial AVAssetWriter pipeline. The front-camera callback supplies live CGImages and joystick state; VideoComposite renders a 720-pixel-wide portrait H.264 MP4 with the rear inset and overlay. Only one frame is in flight; encoder backpressure drops frames instead of delaying control. The writer finalizes in Documents, then attempts Photos with add-only authorization. A persistent Recordings list provides Share and Save to Photos retry; no upload. Version 1.6.1 adds an audio-only AVCaptureSession while recording, mono AAC encoding and host-clock alignment with video timestamps. Microphone authorization is required rather than silently producing a muted recording. Successful Photos saves are persisted by clip filename and guarded against concurrent/repeated imports; the library disables Save to Photos after success. Starting/stopping recording disarms the rover. Exit/guide/background/camera interruption finalize recording. A three-second simulator fixture was encoded, decoded, visually inspected and saved to simulator Photos successfully. Device recording still needs owner confirmation.
+App/HandCamera.swift uses AVCaptureDevice.RotationCoordinator for camera-specific buffer rotation (a fixed 90-degree angle produced a sideways preview on the iPhone 17 Pro). It uses AVCaptureMultiCamSession with explicit connections for front and rear video outputs, selecting low-resolution supported formats at 15 fps. It captures mirrored front-camera frames and extracts Apple Vision hand landmarks at up to 15 Hz. Vision reads the full front sensor frame so sideways movement does not crop away the index knuckle. Only the displayed preview is centre-cropped; CameraFraming projects full-frame landmarks into it, with symmetry/alignment tests. Version 1.5.1 shortens joystick radius from 30% to 24% of viewport width and stabilises index-finger scale for up to 400 ms when the knuckle is hidden/foreshortened. Both fingertips must still be detected live; lost tips stop immediately. Rear frames are unmirrored in the bottom-right inset. App/HandControl.swift owns a pure, testable gesture gate: open hand after enable/loss, thumb/index pinch held 150 ms inside the centre circle to grab a translucent joystick, then two-axis displacement to drive forward/reverse/turn, immediate zero on release/invalid hand. Only thumb/index landmarks are used: thumb tip, index tip, index MCP and index PIP. The index proximal segment times 2.2 estimates scale; the tip midpoint determines steering. No wrist or other-finger landmarks are required. Vision still runs its general hand model, so physical recognition with the rest of the hand hidden is not guaranteed. Brief tracking loss can resume only after a fresh dwell; loss over 600 ms requires opening again. The joystick highlights green while grabbed, even at neutral. Release/loss clears the grab; reacquisition must occur at centre. Normalised image coordinates are aspect-corrected to keep travel isotropic; deflection is radially clamped with a 28% deadzone. Hand mode uses RoverMix for forward/reverse/turns, capped at 35% power. BluetoothLink independently disarms if camera callbacks stall for 300 ms. App/GestureGuide.swift renders procedural SceneKit 3D animations for forward/reverse/left/right/stop. The toolbar hand icon always opens it, stops the rover and pauses the camera. Closing it requires a fresh open-hand/pinch gesture. Camera frames stay local. Version 1.6 replaces the failing ReplayKit export with a serial AVAssetWriter pipeline. The front-camera callback supplies live CGImages and joystick state; VideoComposite renders a 720-pixel-wide portrait H.264 MP4 with the rear inset and overlay. Only one frame is in flight; encoder backpressure drops frames instead of delaying control. The writer finalizes in Documents, then attempts Photos with add-only authorization. A persistent Recordings list provides Share and Save to Photos retry; no upload. Version 1.6.1 adds an audio-only AVCaptureSession while recording, mono AAC encoding and host-clock alignment with video timestamps. Microphone authorization is required rather than silently producing a muted recording. Successful Photos saves are persisted by clip filename and guarded against concurrent/repeated imports; the library disables Save to Photos after success. Starting/stopping recording disarms the rover. Exit/guide/background/camera interruption finalize recording. A three-second simulator fixture was encoded, decoded, visually inspected and saved to simulator Photos successfully. Device recording still needs owner confirmation.
 
 
 Firmware/main.ts uses Yahboom SuperBitV2 MotorRun for M1/M3, a strict integer parser and watchdog. The extension is pinned in pxt.json. Do not replace motor direction handling without checking the vendor driver.
@@ -57,10 +89,10 @@ Preserve these behaviours:
 - Fresh D:m1:m3 required within 400 ms; watchdog checks every 20 ms and disarms on expiry.
 - App has one outstanding application acknowledgement, not an accumulating drive queue.
 - App reply timeout is 350 ms: attempt STOP and disconnect; firmware watchdog is fallback.
-- Joystick release/cancellation sends zero. STOP disables driving until re-enabled.
+- Joystick release/cancellation sends zero. STOP disarms; only fresh input can automatically re-arm.
 - Switching apps/locking requests STOP. Motors can coast after power is removed.
 - Speed defaults to 35%, adjustable 20–60%. Wheel settings persist in phone preferences.
-- Firmware uses **No Pairing Required**. Nearby clients can connect; Enable is not authentication.
+- Firmware uses **No Pairing Required**. Nearby clients can connect; ARM is not authentication.
 
 ## Validation workflow
 
