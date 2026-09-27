@@ -1,12 +1,16 @@
 # iPhone + micro:bit rover
 
-A solder-free Bluetooth rover: a native SwiftUI joystick and hand-gesture app controls two motors on a Yahboom Super:bit board, through a micro:bit V2 running MakeCode firmware.
+A solder-free Bluetooth rover: a native SwiftUI joystick, hand-gesture and voice-control app controls two motors on a Yahboom Super:bit board, through a micro:bit V2 running MakeCode firmware.
 
 The front camera recognises hand gestures locally using Apple Vision, with an animated 3D guide available from the hand icon. No LiDAR, Apple Intelligence subscription, cloud processing or model download is required.
 
 The joystick supports differential steering, a speed limit, wheel reversal settings, release-to-stop, and an independent motor-command watchdog. An earlier LED/button Bluetooth proof of concept is included under `examples/led-poc`.
 
 **Start a new development session with [HANDOVER.md](HANDOVER.md).**
+
+## Illustrated build-and-drive guides
+
+Start with the [three ThinkerLab PDF guides](docs/guides/README.md): joystick, hand gestures and voice control. Each includes the complete hardware build, installation, controls and troubleshooting.
 
 ## Hardware
 
@@ -22,7 +26,9 @@ No soldering, extra Bluetooth module, cloud service or internet connection is ne
 
 ### Firmware
 
-Install Node.js/npm, then:
+For the simplest setup, download [microbit-rover.hex](downloads/microbit-rover.hex) using GitHub's download button and copy it onto the MICROBIT drive. See [firmware download and checksums](downloads/README.md).
+
+To build from source instead, install Node.js/npm, then:
 
 ```sh
 ./scripts/build-firmware.sh
